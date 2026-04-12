@@ -44,7 +44,11 @@ function buildUserObject(supabaseUser, profile) {
   };
 }
 
-/** @param {any} supabaseUser */
+/**
+ * Carga el perfil del usuario desde app_users.
+ * Nunca lanza — usa fallback si la DB falla.
+ * @param {any} supabaseUser
+ */
 async function loadProfile(supabaseUser, setUser, setIsAuthenticated) {
   try {
     const profile = await ensureUserProfile(supabaseUser);
@@ -76,15 +80,18 @@ export const AuthProvider = ({ children }) => {
   const [authError] = useState(/** @type {any} */ (null));
 
   useEffect(() => {
-    let isMounted = true;
+    // Safety timeout: si getSession() cuelga (ej. refresh de token sin red),
+    // desbloquea la UI después de 6 segundos para no quedarse en loader infinito.
+    const safetyTimer = setTimeout(() => {
+      console.warn('[AuthContext] Safety timeout — Supabase no respondió en 6s');
+      setIsLoadingAuth(false);
+    }, 6000);
 
-    // ── Paso 1: carga inicial ────────────────────────────────────────────────
-    // getSession() espera el refresh automático del token antes de resolver,
-    // así que nunca devuelve null para una sesión válida aunque el access
-    // token haya expirado. Esto evita el redirect falso al recargar.
+    // getSession() espera el refresh automático del token antes de resolver.
+    // No usamos isMounted en el .finally() para evitar que el guard impida
+    // la llamada a setIsLoadingAuth(false) en React StrictMode (doble ejecución).
     supabase.auth.getSession()
       .then(async ({ data: { session } }) => {
-        if (!isMounted) return;
         if (session?.user) {
           await loadProfile(session.user, setUser, setIsAuthenticated);
         }
@@ -93,15 +100,13 @@ export const AuthProvider = ({ children }) => {
         console.warn('[AuthContext] getSession error:', err?.message);
       })
       .finally(() => {
-        if (isMounted) setIsLoadingAuth(false);
+        clearTimeout(safetyTimer);
+        setIsLoadingAuth(false);
       });
 
-    // ── Paso 2: escuchar cambios posteriores ─────────────────────────────────
-    // Ignoramos INITIAL_SESSION porque ya lo resuelve getSession() arriba.
-    // Solo reaccionamos a login, logout y refresh de token.
+    // Escuchar cambios posteriores: login, logout, refresh de token.
+    // INITIAL_SESSION se ignora — ya lo resuelve getSession() arriba.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isMounted) return;
-
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user) {
           await loadProfile(session.user, setUser, setIsAuthenticated);
@@ -110,11 +115,10 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setIsAuthenticated(false);
       }
-      // INITIAL_SESSION se ignora — gestionado por getSession() arriba
     });
 
     return () => {
-      isMounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);

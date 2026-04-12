@@ -64,7 +64,7 @@ function createEntityClient(tableName) {
         console.error(`[entityClient] ${tableName}.filter error:`, error.message);
         throw error;
       }
-      return data || [];
+      return (data || []).filter(Boolean);
     },
 
     async list(orderBy = null, limit = null) {

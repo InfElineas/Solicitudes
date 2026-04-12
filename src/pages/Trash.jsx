@@ -15,10 +15,11 @@ export default function Trash() {
   const [emptyConfirm, setEmptyConfirm] = useState(false);
   const qc = useQueryClient();
 
-  const { data: trashItems = [], isLoading } = useQuery({
+  const { data: rawTrash = [], isLoading } = useQuery({
     queryKey: ['trash'],
     queryFn: () => base44.entities.RequestTrash.list('-created_date'),
   });
+  const trashItems = rawTrash.filter(Boolean);
 
   const restoreMutation = useMutation({
     mutationFn: (item) => restoreFromTrash(item),
