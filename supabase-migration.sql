@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS requests (
   actual_hours     FLOAT,
   file_urls        JSONB DEFAULT '[]',
   is_deleted       BOOLEAN DEFAULT false,
+  approval_notes   TEXT,
+  approved_by      TEXT,
+  approved_by_name TEXT,
+  approved_at      TIMESTAMPTZ,
+  rejection_reason TEXT,
   created_date     TIMESTAMPTZ DEFAULT now(),
   updated_date     TIMESTAMPTZ DEFAULT now()
 );
@@ -182,44 +187,60 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
 
 -- Guardias (shifts)
 CREATE TABLE IF NOT EXISTS guardias (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      TEXT,
-  user_name    TEXT,
-  fecha        DATE,
-  turno        TEXT,
-  estado       TEXT DEFAULT 'activa',
-  notas        TEXT,
-  created_date TIMESTAMPTZ DEFAULT now(),
-  updated_date TIMESTAMPTZ DEFAULT now()
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tecnico_id            TEXT,
+  tecnico_nombre        TEXT,
+  inicio                TIMESTAMPTZ,
+  fin                   TIMESTAMPTZ,
+  estado                TEXT DEFAULT 'programada',
+  tipo                  TEXT DEFAULT 'normal',
+  observaciones         TEXT,
+  reemplazado_por_id    TEXT,
+  reemplazado_por_nombre TEXT,
+  creada_por            TEXT,
+  creada_por_nombre     TEXT,
+  created_date          TIMESTAMPTZ DEFAULT now(),
+  updated_date          TIMESTAMPTZ DEFAULT now()
 );
 
 -- Activos (assets)
 CREATE TABLE IF NOT EXISTS activos (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name          TEXT,
-  type          TEXT,
-  status        TEXT,
-  assigned_to   TEXT,
-  serial_number TEXT,
-  notes         TEXT,
-  created_date  TIMESTAMPTZ DEFAULT now(),
-  updated_date  TIMESTAMPTZ DEFAULT now()
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre           TEXT,
+  tipo             TEXT,
+  marca            TEXT,
+  modelo           TEXT,
+  numero_serie     TEXT,
+  estado           TEXT DEFAULT 'Activo',
+  assigned_to      TEXT,
+  assigned_to_name TEXT,
+  department       TEXT,
+  fecha_adquisicion TIMESTAMPTZ,
+  notas            TEXT,
+  created_date     TIMESTAMPTZ DEFAULT now(),
+  updated_date     TIMESTAMPTZ DEFAULT now()
 );
 
 -- Incidents
 CREATE TABLE IF NOT EXISTS incidents (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title            TEXT,
+  tool_name        TEXT,
+  activo_id        TEXT,
+  activo_nombre    TEXT,
+  category         TEXT,
   description      TEXT,
-  status           TEXT DEFAULT 'Abierto',
-  priority         TEXT DEFAULT 'Media',
-  reporter_id      TEXT,
+  impact           TEXT,
   reporter_name    TEXT,
   reporter_email   TEXT,
-  assigned_to_id   TEXT,
+  department       TEXT,
+  status           TEXT DEFAULT 'Pendiente',
+  assigned_to      TEXT,
   assigned_to_name TEXT,
+  resolution_notes TEXT,
+  resolved_at      TIMESTAMPTZ,
+  resolution_hours FLOAT,
   file_urls        JSONB DEFAULT '[]',
-  resolution       TEXT,
+  created_by       TEXT,
   created_date     TIMESTAMPTZ DEFAULT now(),
   updated_date     TIMESTAMPTZ DEFAULT now()
 );

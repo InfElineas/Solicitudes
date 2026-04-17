@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table } from 'lucide-react';
 import EvidenceModal from '../components/requests/EvidenceModal';
@@ -27,59 +28,49 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
 
   const handle = async () => {
     setSaving(true);
-    if (action === 'approve') {
-      await base44.entities.Request.update(request.id, {
-        status: 'Pendiente',
-        approved_by: user?.email,
-        approved_by_name: user?.full_name || user?.email,
-        approved_at: new Date().toISOString(),
-        approval_notes: notes,
-      });
-      await base44.entities.RequestHistory.create({
-        request_id: request.id,
-        from_status: 'Pendiente aprobación',
-        to_status: 'Pendiente',
-        note: `Aprobado por jefatura. ${notes}`,
-        by_user_id: user?.email,
-        by_user_name: user?.full_name || user?.email,
-      });
-      if (request.requester_id) {
-        await base44.entities.Notification.create({
-          user_id: request.requester_id,
-          type: 'status_change',
-          title: '✅ Tu solicitud fue aprobada',
-          message: `La solicitud "${request.title}" fue aprobada por jefatura y está ahora Pendiente.`,
-          request_id: request.id,
-          request_title: request.title,
-          is_read: false,
-        });
-      }
-    } else {
-      await base44.entities.Request.update(request.id, {
-        status: 'Rechazada',
-        rejection_reason: notes || 'Rechazada por jefatura',
-        approval_notes: notes,
-      });
-      await base44.entities.RequestHistory.create({
-        request_id: request.id,
-        from_status: 'Pendiente aprobación',
-        to_status: 'Rechazada',
-        note: `Rechazado por jefatura. ${notes}`,
-        by_user_id: user?.email,
-        by_user_name: user?.full_name || user?.email,
-      });
-      if (request.requester_id) {
-        await base44.entities.Notification.create({
-          user_id: request.requester_id,
-          type: 'status_change',
-          title: '❌ Tu solicitud fue rechazada por jefatura',
-          message: `La solicitud "${request.title}" fue rechazada. Motivo: ${notes}`,
-          request_id: request.id,
-          request_title: request.title,
-          is_read: false,
-        });
-      }
+    const isApprove = action === 'approve';
+    const newStatus = isApprove ? 'Pendiente' : 'Rechazada';
+
+    // Usar RPC para evitar problema de schema cache de PostgREST
+    const { error } = await supabase.rpc('process_request_approval', {
+      p_request_id:       request.id,
+      p_status:           newStatus,
+      p_approved_by:      user?.email || '',
+      p_approved_by_name: user?.full_name || user?.email || '',
+      p_approved_at:      new Date().toISOString(),
+      p_approval_notes:   notes || null,
+      p_rejection_reason: isApprove ? null : (notes || 'Rechazada por jefatura'),
+    });
+
+    if (error) {
+      console.error('[ApprovalModal] rpc error:', error.message);
+      setSaving(false);
+      return;
     }
+
+    await base44.entities.RequestHistory.create({
+      request_id:  request.id,
+      from_status: 'Pendiente aprobación',
+      to_status:   newStatus,
+      note:        isApprove ? `Aprobado. ${notes}` : `Rechazado. ${notes}`,
+      by_user_id:  user?.email,
+      by_user_name: user?.full_name || user?.email,
+    });
+
+    if (request.requester_id) {
+      await base44.entities.Notification.create({
+        user_id:       request.requester_id,
+        type:          'status_change',
+        title:         isApprove ? '✅ Tu solicitud fue aprobada' : '❌ Tu solicitud fue rechazada',
+        message:       isApprove
+          ? `La solicitud "${request.title}" fue aprobada y está Pendiente.`
+          : `La solicitud "${request.title}" fue rechazada. Motivo: ${notes}`,
+        request_id:    request.id,
+        request_title: request.title,
+        is_read:       false,
+      });
+    }
+
     setSaving(false);
     onSaved();
   };
@@ -304,7 +295,7 @@ function RequestCard({ req, user, users, onRefresh }) {
   const isFinalized = req.status === 'Finalizada' || req.status === 'Rechazada';
   const [showApprove, setShowApprove] = useState(false);
   const isPendingApproval = req.status === 'Pendiente aprobación';
-  const isJefe = role === 'jefe';
+  const isJefe = role === 'jefe' || role === 'admin';
 
   return (
     <div className="rounded-xl p-4 flex flex-col gap-2" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,20%)' }}>
@@ -366,7 +357,7 @@ function RequestCard({ req, user, users, onRefresh }) {
         {(canManage || isRequester) && !isFinalized && !isPendingApproval && (
           <ActionBtn label="Editar" color="gray" onClick={() => setModal('edit')} />
         )}
-        {canManage && !isAssignedToMe && !isFinalized && !isPendingApproval && req.status !== 'En progreso' && (
+        {canManage && req.status === 'Pendiente' && (
           <ActionBtn label="Atender" color="blue" onClick={handleAttend} />
         )}
         {canManage && req.status === 'En progreso' && (

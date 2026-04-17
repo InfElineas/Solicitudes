@@ -122,14 +122,29 @@ function ScoreBadge({ score }) {
   );
 }
 
-// Compute a composite performance score per tech (0-100)
-function computeScore(t) {
+const IMPACT_WEIGHTS = { 'Crítico': 4, 'Alto': 3, 'Medio': 2, 'Bajo': 1 };
+
+// Score de solicitudes (0-100)
+function computeRequestScore(t) {
   const successRate = t.Asignadas > 0 ? (t.Finalizadas / t.Asignadas) * 100 : 0;
-  const complexityBonus = Math.min(t.complexityScore / Math.max(t.Asignadas, 1) * 10, 30); // up to 30 pts
-  const volumeScore = Math.min(t.Asignadas * 2, 30); // up to 30 pts for volume
-  const speedScore = t.avgHrs !== '—' ? Math.max(0, 40 - parseFloat(t.avgHrs)) : 0; // faster = more pts, up to 40
-  return Math.min(100, Math.round((successRate * 0.4) + (complexityBonus) + (volumeScore * 0.2) + (speedScore * 0.1)));
+  const complexityBonus = Math.min(t.complexityScore / Math.max(t.Asignadas, 1) * 10, 30);
+  const volumeScore = Math.min(t.Asignadas * 2, 30);
+  const speedScore = t.avgHrs !== '—' ? Math.max(0, 40 - parseFloat(t.avgHrs)) : 0;
+  return Math.min(100, Math.round((successRate * 0.4) + complexityBonus + (volumeScore * 0.2) + (speedScore * 0.1)));
 }
+
+// Score de incidencias (0-100)
+function computeIncidentScore(inc) {
+  if (!inc || inc.Asignadas === 0) return 0;
+  const resolutionRate = (inc.Resueltas / inc.Asignadas) * 40;              // 40 pts max
+  const volumeScore = Math.min(inc.Asignadas * 3, 25);                      // 25 pts max
+  const criticalityScore = Math.min(inc.criticalityScore * 2, 20);          // 20 pts max
+  const speedScore = inc.avgHrs !== '—' ? Math.max(0, 15 - parseFloat(inc.avgHrs) * 0.5) : 0; // 15 pts max
+  return Math.min(100, Math.round(resolutionRate + volumeScore + criticalityScore + speedScore));
+}
+
+// Score combinado (0-100): 55% solicitudes + 45% incidencias
+function computeScore(t) { return computeRequestScore(t); } // legacy alias
 
 export default function Analysis() {
   const [periodFilter, setPeriodFilter] = useState('all');
@@ -162,6 +177,16 @@ export default function Analysis() {
     if (techFilter !== 'all') r = r.filter(x => x.assigned_to_id === techFilter);
     return r;
   }, [requests, periodFilter, techFilter]);
+
+  const incidentsPeriodFiltered = useMemo(() => {
+    let inc = incidents;
+    const now = new Date();
+    if (periodFilter === '7d') inc = inc.filter(x => new Date(x.created_date) > new Date(now - 7 * 86400000));
+    if (periodFilter === '30d') inc = inc.filter(x => new Date(x.created_date) > new Date(now - 30 * 86400000));
+    if (periodFilter === '90d') inc = inc.filter(x => new Date(x.created_date) > new Date(now - 90 * 86400000));
+    if (techFilter !== 'all') inc = inc.filter(x => x.assigned_to === techFilter);
+    return inc;
+  }, [incidents, periodFilter, techFilter]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -274,10 +299,59 @@ export default function Analysis() {
     };
   }).filter(t => t.Asignadas > 0), [periodFiltered, techs]);
 
+  // ── incidentsByTech debe estar ANTES de ranking ──────────────
+  const incidentsByTech = useMemo(() => techs.map(t => {
+    const assigned = incidentsPeriodFiltered.filter(i => i.assigned_to === t.email);
+    const resolved = assigned.filter(i => i.status === 'Resuelto');
+    const withHrs = resolved.filter(i => i.resolution_hours);
+    const avgHrs = withHrs.length > 0
+      ? (withHrs.reduce((s, i) => s + i.resolution_hours, 0) / withHrs.length).toFixed(1)
+      : '—';
+    const pending    = assigned.filter(i => i.status === 'Pendiente').length;
+    const inProgress = assigned.filter(i => i.status === 'En atención').length;
+    const noRepro    = assigned.filter(i => i.status === 'No reproducible').length;
+    const critica = assigned.filter(i => i.impact?.startsWith('Crítico'));
+    const alta    = assigned.filter(i => i.impact?.startsWith('Alto'));
+    const media   = assigned.filter(i => i.impact?.startsWith('Medio'));
+    const baja    = assigned.filter(i => i.impact?.startsWith('Bajo'));
+    const avgHrsByCrit = (arr) => {
+      const r = arr.filter(i => i.status === 'Resuelto' && i.resolution_hours);
+      return r.length > 0 ? (r.reduce((s, i) => s + i.resolution_hours, 0) / r.length).toFixed(1) : '—';
+    };
+    const SLA = { 'Crítico': 4, 'Alto': 8, 'Medio': 24, 'Bajo': 48 };
+    const slaCheck = (arr, key) => {
+      const r = arr.filter(i => i.status === 'Resuelto' && i.resolution_hours);
+      if (!r.length) return null;
+      return Math.round((r.filter(i => i.resolution_hours <= SLA[key]).length / r.length) * 100);
+    };
+    const criticalityScore =
+      critica.filter(i => i.status === 'Resuelto').length * 4 +
+      alta.filter(i => i.status === 'Resuelto').length * 3 +
+      media.filter(i => i.status === 'Resuelto').length * 2 +
+      baja.filter(i => i.status === 'Resuelto').length;
+    return {
+      name: t.full_name || t.email, email: t.email,
+      Asignadas: assigned.length, Resueltas: resolved.length,
+      Pendientes: pending, 'En atención': inProgress, 'No reproducible': noRepro,
+      avgHrs,
+      critica: critica.length, alta: alta.length, media: media.length, baja: baja.length,
+      avgHrsCritica: avgHrsByCrit(critica), avgHrsAlta: avgHrsByCrit(alta),
+      slaCritica: slaCheck(critica, 'Crítico'), slaAlta: slaCheck(alta, 'Alto'),
+      criticalityScore,
+    };
+  }).filter(t => t.Asignadas > 0), [incidentsPeriodFiltered, techs]);
+
   const ranking = useMemo(() => {
-    return [...techProductivity].map(t => ({ ...t, score: computeScore(t) }))
-      .sort((a, b) => b.score - a.score);
-  }, [techProductivity]);
+    return [...techProductivity].map(t => {
+      const reqScore = computeRequestScore(t);
+      const incData  = incidentsByTech.find(i => i.email === t.email);
+      const incScore = incData ? computeIncidentScore(incData) : 0;
+      const combined = incData
+        ? Math.round(reqScore * 0.55 + incScore * 0.45)
+        : reqScore;
+      return { ...t, score: combined, reqScore, incScore, incData };
+    }).sort((a, b) => b.score - a.score);
+  }, [techProductivity, incidentsByTech]);
 
   const distData = techProductivity.map(t => ({
     name: t.name.split(' ')[0],
@@ -325,34 +399,72 @@ export default function Analysis() {
     stats.byDept.map(d => [d.name, d.total, d.Finalizadas, d['En progreso'], d.Pendientes])
   );
 
-  // Incident metrics by tech
-  const incidentsByTech = useMemo(() => techs.map(t => {
-    const assigned = incidents.filter(i => i.assigned_to === t.email);
-    const resolved = assigned.filter(i => i.status === 'Resuelto');
-    const withHrs = resolved.filter(i => i.resolution_hours);
-    const avgHrs = withHrs.length > 0
+  // Incident metrics by tech — enriquecido con criticidad, SLA y score
+  const incidentStats = useMemo(() => {
+    const inc = incidentsPeriodFiltered;
+    const total     = inc.length;
+    const resolved  = inc.filter(i => i.status === 'Resuelto').length;
+    const pending   = inc.filter(i => i.status === 'Pendiente').length;
+    const inProgress = inc.filter(i => i.status === 'En atención').length;
+    const withHrs   = inc.filter(i => i.resolution_hours);
+    const avgHrs    = withHrs.length > 0
       ? (withHrs.reduce((s, i) => s + i.resolution_hours, 0) / withHrs.length).toFixed(1)
       : '—';
-    const pending = assigned.filter(i => i.status === 'Pendiente').length;
-    const inProgress = assigned.filter(i => i.status === 'En atención').length;
-    return { name: t.full_name || t.email, email: t.email, Asignadas: assigned.length, Resueltas: resolved.length, Pendientes: pending, 'En atención': inProgress, avgHrs };
-  }).filter(t => t.Asignadas > 0), [incidents, techs]);
 
-  const incidentStats = useMemo(() => {
-    const total = incidents.length;
-    const resolved = incidents.filter(i => i.status === 'Resuelto').length;
-    const pending = incidents.filter(i => i.status === 'Pendiente').length;
-    const inProgress = incidents.filter(i => i.status === 'En atención').length;
-    const withHrs = incidents.filter(i => i.resolution_hours);
-    const avgHrs = withHrs.length > 0 ? (withHrs.reduce((s, i) => s + i.resolution_hours, 0) / withHrs.length).toFixed(1) : '—';
+    // Críticas sin resolver
+    const criticalPending = inc.filter(i => i.impact?.startsWith('Crítico') && i.status !== 'Resuelto' && i.status !== 'No reproducible').length;
+
+    // Por categoría
     const byCategory = {};
-    incidents.forEach(i => { if (i.category) byCategory[i.category] = (byCategory[i.category] || 0) + 1; });
-    const byCategoryArr = Object.entries(byCategory).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
+    inc.forEach(i => { if (i.category) byCategory[i.category] = (byCategory[i.category] || 0) + 1; });
+    const byCategoryArr = Object.entries(byCategory).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+    // Por impacto
     const byImpact = {};
-    incidents.forEach(i => { if (i.impact) { const k = i.impact.split(' - ')[0]; byImpact[k] = (byImpact[k] || 0) + 1; } });
-    const byImpactArr = Object.entries(byImpact).map(([name, value]) => ({ name, value }));
-    return { total, resolved, pending, inProgress, avgHrs, byCategoryArr, byImpactArr, resolutionRate: total > 0 ? Math.round((resolved/total)*100) : 0 };
-  }, [incidents]);
+    inc.forEach(i => { if (i.impact) { const k = i.impact.split(' - ')[0]; byImpact[k] = (byImpact[k] || 0) + 1; } });
+    const byImpactArr = ['Crítico', 'Alto', 'Medio', 'Bajo']
+      .filter(k => byImpact[k])
+      .map(name => ({ name, value: byImpact[name] }));
+
+    // Tiempo prom por criticidad
+    const avgHrsByCrit = (key) => {
+      const r = inc.filter(i => i.impact?.startsWith(key) && i.resolution_hours);
+      return r.length > 0 ? (r.reduce((s, i) => s + i.resolution_hours, 0) / r.length).toFixed(1) : '—';
+    };
+    const avgHrsByCritArr = ['Crítico', 'Alto', 'Medio', 'Bajo'].map(k => ({
+      name: k, horas: avgHrsByCrit(k) === '—' ? 0 : parseFloat(avgHrsByCrit(k)),
+      label: avgHrsByCrit(k),
+    })).filter(k => k.horas > 0);
+
+    // Por departamento
+    const byDept = {};
+    inc.forEach(i => { if (i.department) byDept[i.department] = (byDept[i.department] || 0) + 1; });
+    const byDeptArr = Object.entries(byDept).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+    // Tendencia semanal (últimas 8 semanas)
+    const weeklyTrend = Array.from({ length: 8 }, (_, i) => {
+      const ws = new Date(); ws.setDate(ws.getDate() - (7 - i) * 7);
+      const we = new Date(ws); we.setDate(we.getDate() + 7);
+      return {
+        week: `S${i + 1}`,
+        Creadas:  incidents.filter(r => { const d = new Date(r.created_date); return d >= ws && d < we; }).length,
+        Resueltas: incidents.filter(r => { const d = r.resolved_at ? new Date(r.resolved_at) : null; return d && d >= ws && d < we; }).length,
+      };
+    });
+
+    // Herramientas / tools más frecuentes
+    const byTool = {};
+    inc.forEach(i => { if (i.tool_name) byTool[i.tool_name] = (byTool[i.tool_name] || 0) + 1; });
+    const byToolArr = Object.entries(byTool).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+
+    // SLA global: críticas ≤ 4h
+    const critResolved = inc.filter(i => i.impact?.startsWith('Crítico') && i.status === 'Resuelto' && i.resolution_hours);
+    const slaGlobal = critResolved.length > 0
+      ? Math.round((critResolved.filter(i => i.resolution_hours <= 4).length / critResolved.length) * 100)
+      : null;
+
+    return { total, resolved, pending, inProgress, avgHrs, criticalPending, byCategoryArr, byImpactArr, avgHrsByCritArr, byDeptArr, weeklyTrend, byToolArr, slaGlobal, resolutionRate: total > 0 ? Math.round((resolved / total) * 100) : 0 };
+  }, [incidentsPeriodFiltered, incidents]);
 
   const tabStyle = (t) => ({
     color: activeTab === t ? 'white' : 'hsl(215,20%,55%)',
@@ -406,13 +518,48 @@ export default function Analysis() {
 
       {activeTab === 'incidencias' && (
         <div className="space-y-5">
+
+          {/* KPIs principales */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard title="Total incidencias" value={incidentStats.total} subtitle="Registradas" icon={FileText} iconColor="text-gray-400" />
+            <StatCard title="Total incidencias" value={incidentStats.total} subtitle="En el periodo" icon={FileText} iconColor="text-gray-400" />
             <StatCard title="Resueltas" value={incidentStats.resolved} subtitle={`Tasa ${incidentStats.resolutionRate}%`} icon={CheckCircle2} iconColor="text-green-400" highlight="text-green-400" />
             <StatCard title="En atención" value={incidentStats.inProgress} icon={Loader2} iconColor="text-blue-400" highlight="text-blue-400" />
             <StatCard title="Tiempo prom. resolución" value={incidentStats.avgHrs !== '—' ? `${incidentStats.avgHrs}h` : '—'} subtitle="Para resueltas" icon={AlarmClock} iconColor="text-orange-400" />
+            <StatCard title="Pendientes" value={incidentStats.pending} icon={Clock} iconColor="text-yellow-400" highlight="text-yellow-400" />
+            <StatCard title="⚠ Críticas sin resolver" value={incidentStats.criticalPending} subtitle="Requieren atención inmediata" icon={AlertTriangle} iconColor="text-red-400" highlight={incidentStats.criticalPending > 0 ? 'text-red-400' : 'text-white'} />
+            {incidentStats.slaGlobal !== null && (
+              <StatCard title="SLA críticas (≤4h)" value={`${incidentStats.slaGlobal}%`} subtitle="Resueltas en tiempo" icon={Zap} iconColor="text-purple-400" highlight={incidentStats.slaGlobal >= 80 ? 'text-green-400' : incidentStats.slaGlobal >= 50 ? 'text-yellow-400' : 'text-red-400'} />
+            )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Tendencia semanal */}
+          <div className="rounded-xl p-5" style={cardStyle}>
+            <SectionTitle title="Tendencia semanal de incidencias" subtitle="Creadas vs resueltas — últimas 8 semanas" />
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={incidentStats.weeklyTrend} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(217,33%,20%)" />
+                <XAxis dataKey="week" tick={{ fontSize: 10, fill: muted }} />
+                <YAxis tick={{ fontSize: 10, fill: muted }} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: 11, color: muted }} />
+                <Line type="monotone" dataKey="Creadas" stroke="#f87171" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="Resueltas" stroke="#4ade80" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Distribuciones */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="rounded-xl p-5" style={cardStyle}>
+              <SectionTitle title="Por criticidad (impacto)" />
+              <div className="space-y-2">
+                {incidentStats.byImpactArr.map(imp => (
+                  <MiniBar key={imp.name} label={imp.name} value={imp.value} max={incidentStats.total}
+                    color={imp.name === 'Crítico' ? '#f87171' : imp.name === 'Alto' ? '#fb923c' : imp.name === 'Medio' ? '#fbbf24' : '#4ade80'} />
+                ))}
+                {incidentStats.byImpactArr.length === 0 && <p className="text-xs" style={{ color: muted }}>Sin datos</p>}
+              </div>
+            </div>
             <div className="rounded-xl p-5" style={cardStyle}>
               <SectionTitle title="Por categoría" />
               <div className="space-y-2">
@@ -422,41 +569,112 @@ export default function Analysis() {
                 {incidentStats.byCategoryArr.length === 0 && <p className="text-xs" style={{ color: muted }}>Sin datos</p>}
               </div>
             </div>
-            <div className="rounded-xl p-5" style={cardStyle}>
-              <SectionTitle title="Por nivel de impacto" />
-              <div className="space-y-2">
-                {incidentStats.byImpactArr.map(imp => (
-                  <MiniBar key={imp.name} label={imp.name} value={imp.value} max={incidentStats.total}
-                    color={imp.name === 'Crítico' ? '#f87171' : imp.name === 'Alto' ? '#fb923c' : imp.name === 'Medio' ? '#fbbf24' : '#4ade80'} />
-                ))}
-                {incidentStats.byImpactArr.length === 0 && <p className="text-xs" style={{ color: muted }}>Sin datos</p>}
+            {incidentStats.byDeptArr.length > 0 && (
+              <div className="rounded-xl p-5" style={cardStyle}>
+                <SectionTitle title="Por departamento" />
+                <div className="space-y-2">
+                  {incidentStats.byDeptArr.map(d => (
+                    <MiniBar key={d.name} label={d.name} value={d.value} max={incidentStats.total} color="#22d3ee" />
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
+
+          {/* Tiempo resolución por criticidad + herramientas más afectadas */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {incidentStats.avgHrsByCritArr.length > 0 && (
+              <div className="rounded-xl p-5" style={cardStyle}>
+                <SectionTitle title="Tiempo prom. de resolución por criticidad" subtitle="Horas desde reporte hasta resolución" />
+                <ResponsiveContainer width="100%" height={Math.max(120, incidentStats.avgHrsByCritArr.length * 50)}>
+                  <BarChart data={incidentStats.avgHrsByCritArr} layout="vertical" margin={{ left: 0, right: 30, top: 0, bottom: 0 }}>
+                    <XAxis type="number" tick={{ fontSize: 10, fill: muted }} unit="h" />
+                    <YAxis dataKey="name" type="category" width={65} tick={{ fontSize: 10, fill: muted }} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={v => [`${v}h`, 'Prom. resolución']} />
+                    <Bar dataKey="horas" radius={[0, 4, 4, 0]}>
+                      {incidentStats.avgHrsByCritArr.map((entry) => (
+                        <rect key={entry.name} fill={entry.name === 'Crítico' ? '#f87171' : entry.name === 'Alto' ? '#fb923c' : entry.name === 'Medio' ? '#fbbf24' : '#4ade80'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {incidentStats.byToolArr.length > 0 && (
+              <div className="rounded-xl p-5" style={cardStyle}>
+                <SectionTitle title="Herramientas / activos más afectados" subtitle="Top 8 por frecuencia de incidencias" />
+                <div className="space-y-2">
+                  {incidentStats.byToolArr.map(t => (
+                    <MiniBar key={t.name} label={t.name} value={t.value} max={incidentStats.byToolArr[0]?.value || 1} color="#a78bfa" />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tabla detallada por técnico */}
           {incidentsByTech.length > 0 && (
             <div className="rounded-xl p-5" style={cardStyle}>
-              <SectionTitle title="Desempeño de técnicos en incidencias" subtitle="Incidencias atendidas, resueltas y tiempo promedio" />
+              <div className="flex items-center justify-between mb-3">
+                <SectionTitle title="Ranking de técnicos — Incidencias" subtitle="Criticidad atendida, tiempos de resolución y cumplimiento SLA" />
+                <ExportBtn
+                  onCSV={() => exportCSV('incidencias_tecnicos',
+                    ['Técnico', 'Asignadas', 'Resueltas', 'Tasa%', 'Prom.h', 'Críticas', 'Altas', 'Medias', 'Bajas', 'Score crit.', 'h Críticas', 'h Altas', 'SLA Críticas%', 'SLA Altas%'],
+                    incidentsByTech.map(t => {
+                      const rate = t.Asignadas > 0 ? Math.round((t.Resueltas / t.Asignadas) * 100) : 0;
+                      return [t.name, t.Asignadas, t.Resueltas, `${rate}%`, t.avgHrs, t.critica, t.alta, t.media, t.baja, t.criticalityScore, t.avgHrsCritica, t.avgHrsAlta, t.slaCritica !== null ? `${t.slaCritica}%` : '—', t.slaAlta !== null ? `${t.slaAlta}%` : '—'];
+                    })
+                  )}
+                  onPDF={() => exportTablePDF('Ranking Técnicos — Incidencias',
+                    ['Técnico', 'Asignadas', 'Resueltas', 'Tasa%', 'Prom.h', 'Críticas', 'Altas', 'Score crit.', 'SLA Críticas%'],
+                    incidentsByTech.map(t => {
+                      const rate = t.Asignadas > 0 ? Math.round((t.Resueltas / t.Asignadas) * 100) : 0;
+                      return [t.name, t.Asignadas, t.Resueltas, `${rate}%`, t.avgHrs, t.critica, t.alta, t.criticalityScore, t.slaCritica !== null ? `${t.slaCritica}%` : '—'];
+                    })
+                  )}
+                />
+              </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs min-w-[500px]">
+                <table className="w-full text-xs min-w-[800px]">
                   <thead>
                     <tr style={{ borderBottom: '1px solid hsl(217,33%,22%)' }}>
-                      {['Técnico', 'Asignadas', 'Resueltas', 'En atención', 'Pendientes', 'Tasa éxito', 'Prom. horas'].map(h => (
-                        <th key={h} className="text-left py-2 px-2 font-medium" style={{ color: 'hsl(215,20%,45%)' }}>{h}</th>
+                      {['Técnico', 'Asignadas', 'Resueltas', 'En at.', 'Tasa éxito', 'Prom.h total', 'Críticas', 'h Críticas', 'SLA≤4h', 'Altas', 'h Altas', 'SLA≤8h', 'Medias', 'Bajas', 'Score crit.'].map(h => (
+                        <th key={h} className="text-left py-2 px-2 font-medium whitespace-nowrap" style={{ color: 'hsl(215,20%,45%)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {incidentsByTech.map((t, i) => {
+                    {incidentsByTech.sort((a, b) => b.criticalityScore - a.criticalityScore).map((t, i) => {
                       const rate = t.Asignadas > 0 ? Math.round((t.Resueltas / t.Asignadas) * 100) : 0;
                       return (
-                        <tr key={i} style={{ borderBottom: '1px solid hsl(217,33%,16%)' }}>
-                          <td className="py-2 px-2 text-blue-400 font-medium">{t.name}</td>
-                          <td className="py-2 px-2 text-white">{t.Asignadas}</td>
+                        <tr key={i} style={{ borderBottom: '1px solid hsl(217,33%,16%)', background: i === 0 ? 'hsl(222,47%,13%)' : undefined }}>
+                          <td className="py-2 px-2 font-semibold" style={{ color: '#60a5fa' }}>
+                            {i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : ''}{t.name}
+                          </td>
+                          <td className="py-2 px-2 text-white font-semibold">{t.Asignadas}</td>
                           <td className="py-2 px-2 text-green-400 font-semibold">{t.Resueltas}</td>
                           <td className="py-2 px-2 text-blue-300">{t['En atención']}</td>
-                          <td className="py-2 px-2 text-yellow-400">{t.Pendientes}</td>
-                          <td className="py-2 px-2"><span className={`font-semibold ${rate >= 70 ? 'text-green-400' : rate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{rate}%</span></td>
+                          <td className="py-2 px-2">
+                            <span className={`font-semibold ${rate >= 70 ? 'text-green-400' : rate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{rate}%</span>
+                          </td>
                           <td className="py-2 px-2 text-orange-300">{t.avgHrs !== '—' ? `${t.avgHrs}h` : '—'}</td>
+                          <td className="py-2 px-2 font-semibold" style={{ color: '#f87171' }}>{t.critica}</td>
+                          <td className="py-2 px-2" style={{ color: '#fca5a5' }}>{t.avgHrsCritica !== '—' ? `${t.avgHrsCritica}h` : '—'}</td>
+                          <td className="py-2 px-2">
+                            {t.slaCritica !== null
+                              ? <span className={`font-semibold ${t.slaCritica >= 80 ? 'text-green-400' : t.slaCritica >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>{t.slaCritica}%</span>
+                              : <span style={{ color: muted }}>—</span>}
+                          </td>
+                          <td className="py-2 px-2 font-semibold" style={{ color: '#fb923c' }}>{t.alta}</td>
+                          <td className="py-2 px-2" style={{ color: '#fed7aa' }}>{t.avgHrsAlta !== '—' ? `${t.avgHrsAlta}h` : '—'}</td>
+                          <td className="py-2 px-2">
+                            {t.slaAlta !== null
+                              ? <span className={`font-semibold ${t.slaAlta >= 80 ? 'text-green-400' : t.slaAlta >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>{t.slaAlta}%</span>
+                              : <span style={{ color: muted }}>—</span>}
+                          </td>
+                          <td className="py-2 px-2 text-yellow-400">{t.media}</td>
+                          <td className="py-2 px-2 text-green-400">{t.baja}</td>
+                          <td className="py-2 px-2 font-bold text-purple-300">{t.criticalityScore}</td>
                         </tr>
                       );
                     })}
@@ -541,21 +759,39 @@ export default function Analysis() {
                           <MetricCell label="A tiempo" value={t.onTimeRate !== null ? `${t.onTimeRate}%` : '—'} color={t.onTimeRate >= 80 ? '#4ade80' : t.onTimeRate >= 50 ? '#fbbf24' : '#f87171'} icon={<TrendingUp className="w-3 h-3" />} />
                         </div>
                         <div className="w-full mt-1 space-y-1">
-                          <p className="text-[10px] font-medium" style={{ color: muted }}>Distribución por dificultad</p>
-                          <div className="flex gap-3">
+                          <p className="text-[10px] font-medium" style={{ color: muted }}>Solicitudes — dificultad</p>
+                          <div className="flex gap-3 flex-wrap">
                             {[['Fácil', t.easyCount, '#4ade80'], ['Medio', t.mediumCount, '#fbbf24'], ['Difícil', t.difficultCount, '#f87171']].map(([l, v, c]) => (
                               <span key={l} className="flex items-center gap-1 text-xs" style={{ color: c }}>
                                 <span className="w-2 h-2 rounded-full inline-block" style={{ background: c }} />
                                 {l}: <strong>{v}</strong>
                               </span>
                             ))}
-                            {Object.entries(t.byReqType).length > 0 && (
-                              <span className="text-[10px] ml-auto" style={{ color: muted }}>
-                                {Object.entries(t.byReqType).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(' · ')}
-                              </span>
-                            )}
+                            <span className="text-[10px] ml-auto" style={{ color: muted }}>
+                              Score solicitudes: <strong className="text-white">{t.reqScore}</strong>
+                            </span>
                           </div>
                         </div>
+                        {t.incData && (
+                          <div className="w-full mt-2 rounded-lg px-3 py-2" style={{ background: 'hsl(0,30%,12%)', border: '1px solid hsl(0,40%,22%)' }}>
+                            <p className="text-[10px] font-semibold mb-1.5" style={{ color: '#fca5a5' }}>
+                              🚨 Incidencias · Score: <strong className="text-white">{t.incScore}</strong>
+                            </p>
+                            <div className="flex gap-4 flex-wrap">
+                              <span className="text-[10px]" style={{ color: muted }}>Atendidas: <strong className="text-white">{t.incData.Asignadas}</strong></span>
+                              <span className="text-[10px]" style={{ color: muted }}>Resueltas: <strong className="text-green-400">{t.incData.Resueltas}</strong></span>
+                              <span className="text-[10px]" style={{ color: muted }}>Prom: <strong className="text-orange-300">{t.incData.avgHrs !== '—' ? `${t.incData.avgHrs}h` : '—'}</strong></span>
+                              {[['🔴 Crítico', t.incData.critica, '#f87171'], ['🟠 Alto', t.incData.alta, '#fb923c'], ['🟡 Medio', t.incData.media, '#fbbf24'], ['🟢 Bajo', t.incData.baja, '#4ade80']].filter(([, v]) => v > 0).map(([l, v, c]) => (
+                                <span key={l} className="text-[10px]" style={{ color: c }}>{l}: <strong>{v}</strong></span>
+                              ))}
+                              {t.incData.slaCritica !== null && (
+                                <span className="text-[10px]" style={{ color: t.incData.slaCritica >= 80 ? '#4ade80' : t.incData.slaCritica >= 50 ? '#fbbf24' : '#f87171' }}>
+                                  SLA críticas: <strong>{t.incData.slaCritica}%</strong>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

@@ -3,6 +3,37 @@ import { supabase } from '@/api/supabaseClient';
 
 const AuthContext = createContext(/** @type {any} */ (null));
 
+const SESSION_START_KEY  = 'app_session_start';
+const PROFILE_CACHE_KEY  = 'app_user_profile';
+const MAX_SESSION_MS     = 24 * 60 * 60 * 1000; // 24 horas
+
+function isSessionExpired() {
+  const start = parseInt(localStorage.getItem(SESSION_START_KEY) || '0', 10);
+  return start > 0 && Date.now() - start > MAX_SESSION_MS;
+}
+
+/** Guarda el perfil en localStorage para usarlo como fallback si la DB tarda. */
+function cacheProfile(/** @type {any} */ userObj) {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(userObj)); } catch {}
+}
+
+/** Devuelve el perfil cacheado si coincide con el email del usuario activo. */
+function getCachedProfile(/** @type {string} */ email) {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p?.email === email ? p : null;
+  } catch { return null; }
+}
+
+function clearCache() {
+  try {
+    localStorage.removeItem(PROFILE_CACHE_KEY);
+    localStorage.removeItem(SESSION_START_KEY);
+  } catch {}
+}
+
 /**
  * Ejecuta una promesa con un límite de tiempo.
  * Si vence, resuelve con `fallback` en lugar de lanzar.
@@ -22,52 +53,46 @@ function withTimeout(promise, ms, fallback) {
 /** @param {any} supabaseUser @param {any} profile */
 function buildUserObject(supabaseUser, profile) {
   return {
-    id: profile?.id || supabaseUser.id,
-    email: supabaseUser.email,
-    full_name: profile?.full_name || supabaseUser.user_metadata?.full_name || supabaseUser.email,
+    id:           profile?.id           || supabaseUser.id,
+    email:        supabaseUser.email,
+    full_name:    profile?.full_name    || supabaseUser.user_metadata?.full_name    || supabaseUser.email,
     display_name: profile?.display_name || profile?.full_name || supabaseUser.user_metadata?.full_name || supabaseUser.email,
-    role: profile?.role || 'employee',
-    department: profile?.department || '',
+    role:         profile?.role         || 'employee',
+    department:   profile?.department   || '',
     department_id: profile?.department_id || '',
-    avatar_url: profile?.avatar_url || supabaseUser.user_metadata?.avatar_url || '',
+    avatar_url:   profile?.avatar_url   || supabaseUser.user_metadata?.avatar_url || '',
   };
 }
 
-/** Promesa que rechaza tras `ms` milisegundos. */
 /** @param {number} ms */
 const rejectAfter = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('db-timeout')), ms));
 
-/**
- * Busca o crea el perfil en app_users.
- * Timeout de 5 s por operación: si la DB no responde devuelve null
- * y el caller usa los datos del JWT como fallback.
- * @param {any} supabaseUser
- * @returns {Promise<any>}
- */
+/** @param {any} supabaseUser */
 async function fetchProfile(supabaseUser) {
   const { data: existing } = await Promise.race([
     supabase.from('app_users').select('*').eq('email', supabaseUser.email).maybeSingle(),
-    rejectAfter(5000),
+    rejectAfter(8000),
   ]);
   if (existing) return existing;
 
-  // No existe → intentar crear, también con timeout
+  // No existe → crear perfil
   const { data: created } = await Promise.race([
     supabase.from('app_users').insert({
-      email: supabaseUser.email,
-      full_name: supabaseUser.user_metadata?.full_name || supabaseUser.email.split('@')[0],
+      email:        supabaseUser.email,
+      full_name:    supabaseUser.user_metadata?.full_name || supabaseUser.email.split('@')[0],
       display_name: supabaseUser.user_metadata?.full_name || supabaseUser.email.split('@')[0],
-      avatar_url: supabaseUser.user_metadata?.avatar_url || null,
-      role: 'employee',
+      avatar_url:   supabaseUser.user_metadata?.avatar_url || null,
+      role:         'employee',
     }).select('*').maybeSingle(),
-    rejectAfter(5000),
+    rejectAfter(8000),
   ]);
   return created ?? null;
 }
 
 /**
- * Carga el perfil y actualiza el estado de auth.
- * Nunca lanza — si la DB falla usa los datos del JWT.
+ * Carga el perfil desde la DB.
+ * Si la DB tarda/falla usa el perfil cacheado en localStorage.
+ * Solo cae al fallback JWT (sin rol real) si no hay caché.
  * @param {any} supabaseUser
  * @param {import('react').Dispatch<any>} setUser
  * @param {import('react').Dispatch<boolean>} setIsAuthenticated
@@ -75,10 +100,19 @@ async function fetchProfile(supabaseUser) {
 async function loadProfile(supabaseUser, setUser, setIsAuthenticated) {
   try {
     const profile = await fetchProfile(supabaseUser);
-    setUser(buildUserObject(supabaseUser, profile));
+    const userObj = buildUserObject(supabaseUser, profile);
+    cacheProfile(userObj);
+    setUser(userObj);
   } catch (/** @type {any} */ err) {
     console.warn('[AuthContext] fetchProfile error, usando fallback JWT:', err?.message);
-    setUser(buildUserObject(supabaseUser, null));
+    // Primero intentar caché — tiene el rol correcto
+    const cached = getCachedProfile(supabaseUser.email);
+    if (cached) {
+      setUser(cached);
+    } else {
+      // Último recurso: datos del JWT (role = 'employee')
+      setUser(buildUserObject(supabaseUser, null));
+    }
   }
   setIsAuthenticated(true);
 }
@@ -86,19 +120,17 @@ async function loadProfile(supabaseUser, setUser, setIsAuthenticated) {
 /** @param {{ children: import('react').ReactNode }} props */
 export const AuthProvider = ({ children }) => {
   /** @type {[any, import('react').Dispatch<any>]} */
-  const [user, setUser] = useState(/** @type {any} */ (null));
+  const [user, setUser]                     = useState(/** @type {any} */ (null));
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isLoadingPublicSettings] = useState(false);
-  const [authError] = useState(/** @type {any} */ (null));
+  const [isLoadingAuth, setIsLoadingAuth]   = useState(true);
+  const [isLoadingPublicSettings]           = useState(false);
+  const [authError]                         = useState(/** @type {any} */ (null));
 
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
       try {
-        // getSession() puede esperar un refresh de token por red.
-        // Le damos 8 s; si vence, asumimos sesión nula (usuario va al login).
         const sessionResult = await withTimeout(
           supabase.auth.getSession(),
           8000,
@@ -109,7 +141,13 @@ export const AuthProvider = ({ children }) => {
 
         const session = sessionResult?.data?.session;
         if (session?.user) {
-          // fetchProfile tiene su propio timeout de 5 s internamente.
+          // Aplicar caché inmediatamente para evitar flash de "Empleado"
+          const cached = getCachedProfile(session.user.email);
+          if (cached) {
+            setUser(cached);
+            setIsAuthenticated(true);
+          }
+          // Luego refrescar desde la DB en segundo plano
           await loadProfile(session.user, setUser, setIsAuthenticated);
         }
       } catch (/** @type {any} */ err) {
@@ -121,15 +159,25 @@ export const AuthProvider = ({ children }) => {
 
     init();
 
-    // Escuchar cambios POST-inicialización: login, logout, refresh de token.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      if (event === 'SIGNED_IN') {
+        localStorage.setItem(SESSION_START_KEY, Date.now().toString());
+        if (session?.user) {
+          await loadProfile(session.user, setUser, setIsAuthenticated);
+        }
+      } else if (event === 'TOKEN_REFRESHED') {
+        if (isSessionExpired()) {
+          await supabase.auth.signOut();
+          return;
+        }
+        // Token refresh: si la DB falla, el caché mantiene el rol correcto
         if (session?.user) {
           await loadProfile(session.user, setUser, setIsAuthenticated);
         }
       } else if (event === 'SIGNED_OUT') {
+        clearCache();
         setUser(null);
         setIsAuthenticated(false);
       }
@@ -142,6 +190,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = async () => {
+    clearCache();
     await supabase.auth.signOut();
     setUser(null);
     setIsAuthenticated(false);
@@ -149,7 +198,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUser = (/** @type {Record<string, any>} */ updated) =>
-    setUser((/** @type {any} */ u) => ({ ...u, ...updated }));
+    setUser((/** @type {any} */ u) => {
+      const next = { ...u, ...updated };
+      cacheProfile(next);
+      return next;
+    });
 
   const navigateToLogin = () => { window.location.href = '/login'; };
 

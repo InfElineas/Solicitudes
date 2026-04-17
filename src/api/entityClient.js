@@ -127,6 +127,21 @@ function createEntityClient(tableName) {
       if (error) throw error;
       return data;
     },
+
+    async bulkCreate(records) {
+      if (!records || records.length === 0) return [];
+      const now = new Date().toISOString();
+      const payload = records.map(r => ({ ...r, created_date: r.created_date || now }));
+      const { data, error } = await supabase
+        .from(tableName)
+        .insert(payload)
+        .select();
+      if (error) {
+        console.error(`[entityClient] ${tableName}.bulkCreate error:`, error.message);
+        throw error;
+      }
+      return data || [];
+    },
   };
 }
 

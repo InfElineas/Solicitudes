@@ -299,12 +299,27 @@ export function AssignModal({ request, users = [], onClose, onSaved }) {
       estimated_hours: hours ? Number(hours) : null,
       estimated_due: due || null,
     };
-    await base44.entities.Request.update(request.id, {
+    const updatePayload = {
       assigned_to_id: techId || null,
       assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
       estimated_hours: hours ? Number(hours) : null,
       estimated_due: due || null,
-    });
+    };
+    // Al reasignar, volver a Pendiente para que el nuevo técnico pueda atenderla
+    if (isReassign && techId && request.assigned_to_id !== techId) {
+      updatePayload.status = 'Pendiente';
+    }
+    await base44.entities.Request.update(request.id, updatePayload);
+    if (isReassign && techId && request.assigned_to_id !== techId) {
+      await base44.entities.RequestHistory.create({
+        request_id: request.id,
+        from_status: request.status,
+        to_status: 'Pendiente',
+        note: `Reasignada a ${tech?.full_name || techId}`,
+        by_user_id: request.assigned_to_id || '',
+        by_user_name: '',
+      });
+    }
     // In-app notification to new assignee
     if (techId) {
       await base44.entities.Notification.create({

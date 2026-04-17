@@ -80,7 +80,7 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
 
     await base44.entities.RequestComment.create({
       request_id: requestId,
-      text: text.trim(),
+      content: text.trim(),
       author_id: user?.email || '',
       author_name: user?.full_name || user?.email || 'Anónimo',
       file_urls: readyUrls,
@@ -154,7 +154,7 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
                     {c.created_date ? new Date(c.created_date).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' }) : ''}
                   </span>
                 </div>
-                {c.text && (
+                {(c.content || c.text) && (
                   <div
                     className="px-3 py-2 rounded-xl text-sm text-white whitespace-pre-wrap break-words"
                     style={{
@@ -162,7 +162,7 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
                       border: '1px solid ' + (isMe ? 'hsl(217,91%,35%)' : 'hsl(217,33%,25%)'),
                     }}
                   >
-                    {c.text}
+                    {c.content || c.text}
                   </div>
                 )}
                 {/* Attachments */}

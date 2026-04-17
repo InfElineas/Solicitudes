@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Plus, CheckCircle2, Clock, Wrench, X, Paperclip, Loader2, MessageSquare, BookOpen } from 'lucide-react';
+import { AlertTriangle, Plus, CheckCircle2, Clock, Wrench, X, Paperclip, Loader2, MessageSquare, BookOpen, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import ChatSection from '../components/requests/ChatSection';
 
 const cardStyle = { background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' };
@@ -91,31 +93,31 @@ function ReportForm({ user, activos, kbArticles, onClose, onSaved }) {
     setSaving(true);
     const file_urls = attachments.filter(a => a.url).map(a => a.url);
 
-    // Check for active guardia to auto-assign
-    const now = new Date();
-    const guardias = await base44.entities.Guardia.filter({ estado: 'activa' });
-    const activeGuardia = guardias.find(g =>
-      new Date(g.inicio) <= now && new Date(g.fin) >= now
-    );
+    // La RPC detecta automáticamente al técnico de guardia y asigna
+    const { data: result, error: rpcError } = await supabase.rpc('create_incident', {
+      p_tool_name:      form.tool_name,
+      p_category:       form.category,
+      p_description:    form.description,
+      p_impact:         form.impact,
+      p_reporter_name:  form.reporter_name  || null,
+      p_reporter_email: form.reporter_email || null,
+      p_department:     form.department     || null,
+      p_activo_id:      form.activo_id      || null,
+      p_activo_nombre:  form.activo_nombre  || null,
+      p_file_urls:      file_urls,
+      p_created_by:     user?.email || null,
+    });
 
-    const incidentData = {
-      ...form,
-      status: 'Pendiente',
-      file_urls,
-    };
-
-    if (activeGuardia) {
-      incidentData.assigned_to = activeGuardia.tecnico_id;
-      incidentData.assigned_to_name = activeGuardia.tecnico_nombre;
-      incidentData.status = 'En atención';
+    if (rpcError) {
+      console.error('[Incidents] create_incident rpc error:', rpcError.message);
+      setSaving(false);
+      return;
     }
 
-    const created = await base44.entities.Incident.create(incidentData);
-
-    // Notify guard tech if auto-assigned
-    if (activeGuardia) {
+    // Notificar al técnico si fue auto-asignado por guardia
+    if (result?.auto_assigned && result?.assigned_to) {
       await base44.entities.Notification.create({
-        user_id: activeGuardia.tecnico_id,
+        user_id: result.assigned_to,
         type: 'assigned',
         title: '🚨 Nueva incidencia asignada por guardia',
         message: `Se te asignó la incidencia "${form.tool_name}" automáticamente por estar de guardia.`,
@@ -388,7 +390,8 @@ export default function Incidents() {
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
-  const isStaff = user?.role === 'admin' || user?.role === 'support';
+  const isAdmin = user?.role === 'admin';
+  const isStaff = isAdmin || user?.role === 'support';
 
   const { data: incidents = [], isLoading } = useQuery({
     queryKey: ['incidents'],
@@ -423,6 +426,13 @@ export default function Incidents() {
   }, [myIncidents, statusFilter]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['incidents'] });
+
+  const handleDelete = async (inc) => {
+    if (!window.confirm(`¿Eliminar la incidencia "${inc.tool_name}"? Esta acción no se puede deshacer.`)) return;
+    await base44.entities.Incident.delete(inc.id);
+    toast.success('Incidencia eliminada');
+    refresh();
+  };
 
   const selectStyle = { background: 'hsl(222,47%,13%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
 
@@ -543,6 +553,16 @@ export default function Incidents() {
                       style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' }}
                     >
                       Gestionar
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleDelete(inc)}
+                      className="p-1.5 rounded-lg hover:opacity-80 transition-opacity"
+                      style={{ background: 'hsl(0,50%,20%)', color: '#f87171' }}
+                      title="Eliminar incidencia"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>

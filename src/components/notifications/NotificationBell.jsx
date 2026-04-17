@@ -6,13 +6,53 @@ export default function NotificationBell({ user }) {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const ref = useRef();
+  /** @type {React.MutableRefObject<Set<string>>} */
+  const seenIds = useRef(new Set());
+  const permissionRequested = useRef(false);
 
   const unread = notifications.filter(n => !n.is_read).length;
+
+  // Request browser notification permission once
+  useEffect(() => {
+    if (permissionRequested.current) return;
+    permissionRequested.current = true;
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  /** Fire a browser push notification if permission granted */
+  const firePush = (/** @type {any} */ n) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      new Notification(n.title || 'Nueva notificación', {
+        body: n.message || '',
+        icon: '/favicon.ico',
+        tag: n.id, // prevents duplicate if browser deduplicates
+      });
+    } catch {}
+  };
 
   const load = () => {
     if (!user?.email) return;
     base44.entities.Notification.filter({ user_id: user.email }, '-created_date', 30)
-      .then(setNotifications)
+      .then((/** @type {any[]} */ data) => {
+        setNotifications(data);
+
+        // On first load just seed seenIds without firing notifications
+        if (seenIds.current.size === 0) {
+          data.forEach(n => seenIds.current.add(n.id));
+          return;
+        }
+
+        // On subsequent polls: fire push for any new unread notification
+        data.forEach(n => {
+          if (!seenIds.current.has(n.id)) {
+            seenIds.current.add(n.id);
+            if (!n.is_read) firePush(n);
+          }
+        });
+      })
       .catch(() => {});
   };
 
