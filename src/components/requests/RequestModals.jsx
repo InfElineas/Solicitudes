@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 import CommentsSection from './CommentsSection';
 import ChatSection from './ChatSection';
 import EvidenceModal from './EvidenceModal';
@@ -22,20 +23,29 @@ function ModalWrapper({ title, subtitle, onClose, children, wide }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-center bg-black/60 sm:p-4 sm:overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className={`rounded-xl p-6 w-full shadow-2xl my-8 ${wide ? 'max-w-2xl' : 'max-w-md'}`}
+        className={`w-full shadow-2xl ${wide
+          ? 'rounded-t-2xl sm:rounded-xl sm:max-w-2xl sm:my-8 max-h-[92vh] flex flex-col'
+          : 'rounded-t-2xl sm:rounded-xl sm:max-w-md sm:my-8 max-h-[92vh] flex flex-col'
+        }`}
         style={modalStyle}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-base font-semibold text-white">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none">✕</button>
+        {/* Drag handle (mobile only) */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'hsl(217,33%,30%)' }} />
         </div>
-        {subtitle && <p className="text-xs mb-4" style={{ color: 'hsl(215,20%,55%)' }}>{subtitle}</p>}
-        {children}
+        <div className="flex items-center justify-between px-4 pt-2 pb-1 sm:px-6 sm:pt-5 shrink-0">
+          <h3 className="text-base font-semibold text-white">{title}</h3>
+          <button onClick={onClose} className="p-2 -mr-1 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors">✕</button>
+        </div>
+        {subtitle && <p className="text-xs px-4 sm:px-6 pb-2 shrink-0" style={{ color: 'hsl(215,20%,55%)' }}>{subtitle}</p>}
+        <div className="flex-1 overflow-y-auto px-4 pb-6 sm:px-6">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -98,40 +108,44 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
     e.preventDefault();
     if (attachments.some(f => f.uploading)) return;
     setSaving(true);
-    const readyUrls = attachments.filter(f => f.url).map(f => f.url);
-    const payload = {
-      ...form,
-      level: form.level || null,
-      estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
-      estimated_due: form.estimated_due || null,
-      file_urls: readyUrls,
-    };
-    if (isEdit) {
-      await base44.entities.Request.update(request.id, payload);
-      // Notify assigned tech that request was edited
-      if (request.assigned_to_id) {
-        await base44.entities.Notification.create({
-          user_id: request.assigned_to_id,
-          type: 'status_change',
-          title: '✏️ Solicitud modificada',
-          message: `La solicitud "${request.title}" fue editada por el solicitante.`,
-          request_id: request.id,
-          request_title: request.title,
-          is_read: false,
+    try {
+      const readyUrls = attachments.filter(f => f.url).map(f => f.url);
+      const payload = {
+        ...form,
+        level: form.level || null,
+        estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
+        estimated_due: form.estimated_due || null,
+        file_urls: readyUrls,
+      };
+      if (isEdit) {
+        await base44.entities.Request.update(request.id, payload);
+        if (request.assigned_to_id) {
+          await base44.entities.Notification.create({
+            user_id: request.assigned_to_id,
+            type: 'status_change',
+            title: '✏️ Solicitud modificada',
+            message: `La solicitud "${request.title}" fue editada por el solicitante.`,
+            request_id: request.id,
+            request_title: request.title,
+            is_read: false,
+          });
+        }
+      } else {
+        const needsApproval = ['Desarrollo', 'Automatización'].includes(form.request_type);
+        await base44.entities.Request.create({
+          ...payload,
+          status: needsApproval ? 'Pendiente aprobación' : 'Pendiente',
+          is_deleted: false,
+          requester_id: user?.email,
+          requester_name: user?.full_name || user?.email,
         });
       }
-    } else {
-      const needsApproval = ['Desarrollo', 'Automatización'].includes(form.request_type);
-      await base44.entities.Request.create({
-        ...payload,
-        status: needsApproval ? 'Pendiente aprobación' : 'Pendiente',
-        is_deleted: false,
-        requester_id: user?.email,
-        requester_name: user?.full_name || user?.email,
-      });
+      onSaved();
+    } catch (err) {
+      console.error('[RequestFormModal] handleSubmit error:', err);
+      toast.error('Error al guardar la solicitud. Inténtalo de nuevo.');
+      setSaving(false);
     }
-    setSaving(false);
-    onSaved();
   };
 
   const REQUEST_TYPES = ['Desarrollo', 'Corrección de errores', 'Mejora funcional', 'Mejora visual', 'Migración', 'Automatización'];
@@ -225,28 +239,33 @@ export function ClassifyModal({ request, onClose, onSaved, user }) {
 
   const handleSave = async () => {
     setSaving(true);
-    await base44.entities.Request.update(request.id, { level, priority });
-    await base44.entities.RequestHistory.create({
-      request_id: request.id,
-      from_status: request.status,
-      to_status: request.status,
-      note: `${isReclassify ? 'Reclasificado' : 'Clasificado'}: Dificultad=${level}, Prioridad=${priority}`,
-      by_user_id: user?.email,
-      by_user_name: user?.full_name || user?.email,
-    });
-    if (request.assigned_to_id) {
-      await base44.entities.Notification.create({
-        user_id: request.assigned_to_id,
-        type: 'status_change',
-        title: '🏷️ Solicitud reclasificada',
-        message: `La solicitud "${request.title}" fue ${isReclassify ? 'reclasificada' : 'clasificada'}. Dificultad: ${level}, Prioridad: ${priority}.`,
+    try {
+      await base44.entities.Request.update(request.id, { level, priority });
+      await base44.entities.RequestHistory.create({
         request_id: request.id,
-        request_title: request.title,
-        is_read: false,
+        from_status: request.status,
+        to_status: request.status,
+        note: `${isReclassify ? 'Reclasificado' : 'Clasificado'}: Dificultad=${level}, Prioridad=${priority}`,
+        by_user_id: user?.email,
+        by_user_name: user?.full_name || user?.email,
       });
+      if (request.assigned_to_id) {
+        await base44.entities.Notification.create({
+          user_id: request.assigned_to_id,
+          type: 'status_change',
+          title: '🏷️ Solicitud reclasificada',
+          message: `La solicitud "${request.title}" fue ${isReclassify ? 'reclasificada' : 'clasificada'}. Dificultad: ${level}, Prioridad: ${priority}.`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        });
+      }
+      onSaved();
+    } catch (err) {
+      console.error('[ClassifyModal] handleSave error:', err);
+      toast.error('Error al clasificar. Inténtalo de nuevo.');
+      setSaving(false);
     }
-    setSaving(false);
-    onSaved();
   };
 
   return (
@@ -291,65 +310,67 @@ export function AssignModal({ request, users = [], onClose, onSaved }) {
 
   const handleAssign = async () => {
     setSaving(true);
-    const tech = techs.find(u => u.email === techId);
-    const updatedRequest = {
-      ...request,
-      assigned_to_id: techId || null,
-      assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
-      estimated_hours: hours ? Number(hours) : null,
-      estimated_due: due || null,
-    };
-    const updatePayload = {
-      assigned_to_id: techId || null,
-      assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
-      estimated_hours: hours ? Number(hours) : null,
-      estimated_due: due || null,
-    };
-    // Al reasignar, volver a Pendiente para que el nuevo técnico pueda atenderla
-    if (isReassign && techId && request.assigned_to_id !== techId) {
-      updatePayload.status = 'Pendiente';
+    try {
+      const tech = techs.find(u => u.email === techId);
+      const updatedRequest = {
+        ...request,
+        assigned_to_id: techId || null,
+        assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
+        estimated_hours: hours ? Number(hours) : null,
+        estimated_due: due || null,
+      };
+      const updatePayload = {
+        assigned_to_id: techId || null,
+        assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
+        estimated_hours: hours ? Number(hours) : null,
+        estimated_due: due || null,
+      };
+      if (isReassign && techId && request.assigned_to_id !== techId) {
+        updatePayload.status = 'Pendiente';
+      }
+      await base44.entities.Request.update(request.id, updatePayload);
+      if (isReassign && techId && request.assigned_to_id !== techId) {
+        await base44.entities.RequestHistory.create({
+          request_id: request.id,
+          from_status: request.status,
+          to_status: 'Pendiente',
+          note: `Reasignada a ${tech?.full_name || techId}`,
+          by_user_id: request.assigned_to_id || '',
+          by_user_name: '',
+        });
+      }
+      if (techId) {
+        await base44.entities.Notification.create({
+          user_id: techId,
+          type: 'assigned',
+          title: isReassign ? '🔄 Solicitud reasignada a ti' : '📋 Se te asignó una solicitud',
+          message: isReassign
+            ? `La solicitud "${request.title}" ha sido reasignada a ti.`
+            : `La solicitud "${request.title}" ha sido asignada a ti.`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        });
+        await sendAssignedCriticalEmail(updatedRequest, techId, tech?.full_name || techId);
+      }
+      if (isReassign && request.assigned_to_id && request.assigned_to_id !== techId) {
+        await base44.entities.Notification.create({
+          user_id: request.assigned_to_id,
+          type: 'status_change',
+          title: '🔄 Solicitud reasignada',
+          message: `La solicitud "${request.title}" fue reasignada a otro técnico.`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        });
+      }
+      toast.success(isReassign ? 'Solicitud reasignada' : 'Solicitud asignada');
+      onSaved();
+    } catch (err) {
+      console.error('[AssignModal] handleAssign error:', err);
+      toast.error('Error al asignar. Inténtalo de nuevo.');
+      setSaving(false);
     }
-    await base44.entities.Request.update(request.id, updatePayload);
-    if (isReassign && techId && request.assigned_to_id !== techId) {
-      await base44.entities.RequestHistory.create({
-        request_id: request.id,
-        from_status: request.status,
-        to_status: 'Pendiente',
-        note: `Reasignada a ${tech?.full_name || techId}`,
-        by_user_id: request.assigned_to_id || '',
-        by_user_name: '',
-      });
-    }
-    // In-app notification to new assignee
-    if (techId) {
-      await base44.entities.Notification.create({
-        user_id: techId,
-        type: 'assigned',
-        title: isReassign ? '🔄 Solicitud reasignada a ti' : '📋 Se te asignó una solicitud',
-        message: isReassign
-          ? `La solicitud "${request.title}" ha sido reasignada a ti.`
-          : `La solicitud "${request.title}" ha sido asignada a ti.`,
-        request_id: request.id,
-        request_title: request.title,
-        is_read: false,
-      });
-      // Email for critical assignments
-      await sendAssignedCriticalEmail(updatedRequest, techId, tech?.full_name || techId);
-    }
-    // Notify previous assignee if reassigning
-    if (isReassign && request.assigned_to_id && request.assigned_to_id !== techId) {
-      await base44.entities.Notification.create({
-        user_id: request.assigned_to_id,
-        type: 'status_change',
-        title: '🔄 Solicitud reasignada',
-        message: `La solicitud "${request.title}" fue reasignada a otro técnico.`,
-        request_id: request.id,
-        request_title: request.title,
-        is_read: false,
-      });
-    }
-    setSaving(false);
-    onSaved();
   };
 
   return (
@@ -391,32 +412,36 @@ export function RejectModal({ request, onClose, onSaved, user }) {
   const handleReject = async () => {
     if (!reason.trim()) return;
     setSaving(true);
-    await base44.entities.Request.update(request.id, {
-      status: 'Rechazada',
-      rejection_reason: reason,
-    });
-    await base44.entities.RequestHistory.create({
-      request_id: request.id,
-      from_status: request.status,
-      to_status: 'Rechazada',
-      note: reason,
-      by_user_id: user?.email,
-      by_user_name: user?.full_name || user?.email,
-    });
-    // Notify requester
-    if (request.requester_id) {
-      await base44.entities.Notification.create({
-        user_id: request.requester_id,
-        type: 'status_change',
-        title: '❌ Tu solicitud fue rechazada',
-        message: `La solicitud "${request.title}" fue rechazada. Motivo: ${reason}`,
-        request_id: request.id,
-        request_title: request.title,
-        is_read: false,
+    try {
+      await base44.entities.Request.update(request.id, {
+        status: 'Rechazada',
+        rejection_reason: reason,
       });
+      await base44.entities.RequestHistory.create({
+        request_id: request.id,
+        from_status: request.status,
+        to_status: 'Rechazada',
+        note: reason,
+        by_user_id: user?.email,
+        by_user_name: user?.full_name || user?.email,
+      });
+      if (request.requester_id) {
+        await base44.entities.Notification.create({
+          user_id: request.requester_id,
+          type: 'status_change',
+          title: '❌ Tu solicitud fue rechazada',
+          message: `La solicitud "${request.title}" fue rechazada. Motivo: ${reason}`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        });
+      }
+      onSaved();
+    } catch (err) {
+      console.error('[RejectModal] handleReject error:', err);
+      toast.error('Error al rechazar. Inténtalo de nuevo.');
+      setSaving(false);
     }
-    setSaving(false);
-    onSaved();
   };
 
   return (
@@ -452,7 +477,8 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
 
   return (
     <ModalWrapper title="Detalle de la solicitud" onClose={onClose} wide>
-      <div className="mb-4">
+      {/* Title + pills */}
+      <div className="mb-3">
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <h4 className="text-base font-semibold text-white">{request.title}</h4>
           <PriorityPill p={request.priority} />
@@ -463,58 +489,60 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
         </p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b mb-4" style={{ borderColor: 'hsl(217,33%,22%)' }}>
-        {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${tab === t.key ? 'text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white'}`}>
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs — scrollable on mobile */}
+      <div className="overflow-x-auto -mx-1 mb-4" style={{ borderBottom: '1px solid hsl(217,33%,22%)' }}>
+        <div className="flex min-w-max px-1">
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${tab === t.key ? 'text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'resumen' && (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-          {[...[
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+          {[
             ['Tipo', request.request_type || '—'],
             ['Dificultad', request.level || '—'],
             ['Asignado a', request.assigned_to_name || '—'],
             ['Compromiso', request.estimated_due ? new Date(request.estimated_due).toLocaleDateString('es') : '—'],
             ['Estimado (h)', request.estimated_hours ?? '—'],
-            ['Tiempo real (h)', request.actual_hours != null ? `${request.actual_hours}h` : request.started_at ? `En progreso (inicio: ${new Date(request.started_at).toLocaleString('es')})` : '—'],
-          ]].map(([k, v]) => (
-            <div key={k}>
-              <span className="block text-xs" style={{ color: 'hsl(215,20%,55%)' }}>{k}</span>
+            ['Tiempo real (h)', request.actual_hours != null ? `${request.actual_hours}h` : request.started_at ? `En progreso` : '—'],
+          ].map(([k, v]) => (
+            <div key={k} className="rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
+              <span className="block text-xs mb-0.5" style={{ color: 'hsl(215,20%,55%)' }}>{k}</span>
               <span className="font-semibold text-white">{v}</span>
             </div>
           ))}
           {request.approved_by_name && (
-            <div>
-              <span className="block text-xs" style={{ color: 'hsl(215,20%,55%)' }}>Aprobado por</span>
+            <div className="rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
+              <span className="block text-xs mb-0.5" style={{ color: 'hsl(215,20%,55%)' }}>Aprobado por</span>
               <span className="font-semibold text-green-400">{request.approved_by_name}</span>
             </div>
           )}
           {request.approved_at && (
-            <div>
-              <span className="block text-xs" style={{ color: 'hsl(215,20%,55%)' }}>Fecha aprobación</span>
+            <div className="rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
+              <span className="block text-xs mb-0.5" style={{ color: 'hsl(215,20%,55%)' }}>Fecha aprobación</span>
               <span className="font-semibold text-white">{new Date(request.approved_at).toLocaleString('es')}</span>
             </div>
           )}
-          <div className="col-span-2">
+          <div className="sm:col-span-2 rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
             <span className="block text-xs mb-1" style={{ color: 'hsl(215,20%,55%)' }}>Descripción</span>
-            <span className="font-semibold text-white">{request.description}</span>
+            <span className="text-white text-sm leading-relaxed">{request.description}</span>
           </div>
           {request.rejection_reason && (
-            <div className="col-span-2">
+            <div className="sm:col-span-2 rounded-lg px-3 py-2" style={{ background: 'hsl(0,40%,15%)', border: '1px solid hsl(0,60%,25%)' }}>
               <span className="block text-xs mb-1 text-red-400">Motivo de rechazo</span>
-              <span className="font-semibold text-red-300">{request.rejection_reason}</span>
+              <span className="text-red-300 text-sm">{request.rejection_reason}</span>
             </div>
           )}
         </div>
       )}
 
       {tab === 'historial' && (
-        <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+        <div className="space-y-3">
           {history.length === 0 ? (
             <p className="text-sm text-gray-500">Sin historial.</p>
           ) : history.map((h, i) => (
@@ -544,7 +572,7 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
       )}
 
       {tab === 'worklogs' && (
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+        <div className="space-y-2">
           {worklogs.length === 0 ? (
             <p className="text-sm text-gray-500">Sin registros de tiempo.</p>
           ) : worklogs.map((w, i) => (
@@ -558,7 +586,7 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
       )}
 
       <div className="flex justify-end mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cerrar</button>
+        <button onClick={onClose} className="px-5 py-2.5 text-sm rounded-lg text-gray-300 hover:bg-white/10 font-medium">Cerrar</button>
       </div>
     </ModalWrapper>
   );

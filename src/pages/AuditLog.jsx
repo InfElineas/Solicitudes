@@ -67,7 +67,7 @@ function RestoreModal({ log, onClose, onRestored }) {
     if (!log.snapshot) { toast.error('No hay snapshot disponible para restaurar'); return; }
     setRestoring(true);
     try {
-      const data = JSON.parse(log.snapshot);
+      const data = JSON.parse(log.snapshot) || {};
       const { id, created_date, updated_date, created_by, ...restoreData } = data;
       if (log.entity_type === 'request')  await base44.entities.Request.update(log.entity_id, restoreData);
       if (log.entity_type === 'incident') await base44.entities.Incident.update(log.entity_id, restoreData);
@@ -258,7 +258,7 @@ export default function AuditLog() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px]">
+        <div className="relative flex-1 min-w-[140px] sm:min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: muted }} />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}
             placeholder="Buscar por título, usuario, campo, valor..."
@@ -309,7 +309,7 @@ export default function AuditLog() {
             const actionCfg  = ACTION_COLORS[log.action] || ACTION_COLORS.update;
             const entityColor = ENTITY_COLORS[log.entity_type] || '#94a3b8';
             return (
-              <div key={log.id} className="rounded-xl px-4 py-3 flex items-start gap-3 flex-wrap hover:opacity-90 transition-opacity" style={cardStyle}>
+              <div key={log.id} className="rounded-xl px-3 sm:px-4 py-3 flex items-start gap-3 flex-wrap hover:opacity-90 transition-opacity" style={cardStyle}>
                 {/* Left: badges */}
                 <div className="flex items-center gap-2 shrink-0 pt-0.5">
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap"
@@ -345,7 +345,7 @@ export default function AuditLog() {
                 </div>
 
                 {/* Right: user + date + actions */}
-                <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                <div className="text-right shrink-0 flex flex-col items-end gap-1 w-full sm:w-auto">
                   <p className="text-xs font-medium text-white">{log.by_user_name || '—'}</p>
                   <p className="text-[10px]" style={{ color: muted }}>
                     {new Date(log.created_date).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' })}
@@ -375,12 +375,12 @@ export default function AuditLog() {
 
       {/* Pagination */}
       {filtered.length > PAGE_SIZE && (
-        <div className="flex items-center justify-center gap-3 text-xs" style={{ color: muted }}>
+        <div className="flex flex-wrap items-center justify-center gap-2 text-xs" style={{ color: muted }}>
           <button onClick={() => setPage(0)} disabled={page === 0}
             className="px-2 py-1.5 rounded hover:bg-white/10 disabled:opacity-30">«</button>
           <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
             className="px-3 py-1.5 rounded hover:bg-white/10 disabled:opacity-30">Anterior</button>
-          <span>Página {page + 1} / {totalPages} · {filtered.length} registros</span>
+          <span className="whitespace-nowrap">Pág {page + 1}/{totalPages} · {filtered.length}</span>
           <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
             className="px-3 py-1.5 rounded hover:bg-white/10 disabled:opacity-30">Siguiente</button>
           <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}

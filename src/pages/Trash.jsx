@@ -43,7 +43,7 @@ export default function Trash() {
   const filtered = trashItems.filter(item => {
     if (!search) return true;
     let snap = {};
-    try { snap = JSON.parse(item.snapshot); } catch {}
+    try { snap = JSON.parse(item.snapshot) || {}; } catch {}
     return snap.title?.toLowerCase().includes(search.toLowerCase()) || snap.description?.toLowerCase().includes(search.toLowerCase());
   });
 
@@ -95,7 +95,7 @@ export default function Trash() {
           <div className="divide-y" style={{ borderColor: 'hsl(217,33%,18%)' }}>
             {paginated.map(item => {
               let snap = {};
-              try { snap = JSON.parse(item.snapshot); } catch {}
+              try { snap = JSON.parse(item.snapshot) || {}; } catch {}
               const daysLeft = item.expire_at
                 ? Math.max(0, Math.ceil((new Date(item.expire_at) - new Date()) / (1000 * 60 * 60 * 24)))
                 : 30;
@@ -128,11 +128,11 @@ export default function Trash() {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-xs" style={{ color: 'hsl(215,20%,55%)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs" style={{ color: 'hsl(215,20%,55%)' }}>
         <span>Total: {filtered.length}</span>
         <div className="flex items-center gap-2">
           <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-30">Anterior</button>
-          <span className="font-medium text-white">Página {page + 1}/{totalPages}</span>
+          <span className="font-medium text-white whitespace-nowrap">Pág {page + 1}/{totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-30 text-blue-400">Siguiente</button>
         </div>
       </div>

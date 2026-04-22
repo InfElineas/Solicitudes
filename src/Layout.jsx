@@ -4,10 +4,11 @@ import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import {
   FileText, BarChart2, Trash2, Users, Building2,
-  ChevronLeft, LogOut, Zap, AlertTriangle, Shield, Package, BookOpen, ShieldCheck,
+  ChevronLeft, LogOut, Zap, AlertTriangle, Shield, Package, BookOpen, ShieldCheck, Menu,
 } from 'lucide-react';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import UserProfileModal from '@/components/profile/UserProfileModal';
+import MobileBottomNav from '@/components/MobileBottomNav';
 
 const NAV = [
   { name: 'Solicitudes',           path: '/Requests',        icon: FileText,    roles: ['admin', 'support', 'employee', 'jefe'] },
@@ -30,6 +31,7 @@ const AVATAR_COLORS = ['bg-pink-500', 'bg-blue-500', 'bg-purple-500', 'bg-green-
 export default function Layout({ children, currentPageName }) {
   const { user, logout, updateUser } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   /** @type {[any[], import('react').Dispatch<import('react').SetStateAction<any[]>>]} */
   const [departments, setDepartments] = useState(/** @type {any[]} */ ([]));
@@ -61,9 +63,21 @@ export default function Layout({ children, currentPageName }) {
   return (
     <div className="h-screen flex overflow-hidden" style={{ background: 'hsl(222,47%,8%)', color: 'hsl(210,40%,98%)' }}>
 
+      {/* ── Mobile backdrop ── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ── */}
       <aside
-        className="flex flex-col shrink-0 transition-all duration-200 border-r"
+        className={`
+          fixed inset-y-0 left-0 z-40 flex flex-col shrink-0 transition-all duration-200 border-r
+          md:relative md:translate-x-0
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
         style={{ width: collapsed ? 56 : 210, background: 'hsl(222,47%,9%)', borderColor: 'hsl(217,33%,16%)' }}
       >
         {/* Logo */}
@@ -75,7 +89,7 @@ export default function Layout({ children, currentPageName }) {
             </div>
           )}
           <button
-            className="ml-auto p-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0"
+            className="ml-auto p-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0 hidden md:flex"
             onClick={() => setCollapsed(c => !c)}
             title={collapsed ? 'Expandir' : 'Colapsar'}
           >
@@ -83,6 +97,12 @@ export default function Layout({ children, currentPageName }) {
               className={`w-4 h-4 transition-transform duration-200 ${collapsed ? 'rotate-180' : ''}`}
               style={{ color: 'hsl(215,20%,55%)' }}
             />
+          </button>
+          <button
+            className="ml-auto p-1.5 rounded-lg hover:bg-white/10 transition-colors shrink-0 md:hidden"
+            onClick={() => setMobileOpen(false)}
+          >
+            <ChevronLeft className="w-4 h-4" style={{ color: 'hsl(215,20%,55%)' }} />
           </button>
         </div>
 
@@ -95,6 +115,7 @@ export default function Layout({ children, currentPageName }) {
                 key={item.path}
                 to={item.path}
                 title={collapsed ? item.name : undefined}
+                onClick={() => setMobileOpen(false)}
                 className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                   isActive ? 'text-white' : 'hover:text-white hover:bg-white/5'
                 }`}
@@ -114,7 +135,7 @@ export default function Layout({ children, currentPageName }) {
         {/* User section */}
         <div className="shrink-0 border-t px-2 py-2" style={{ borderColor: 'hsl(217,33%,16%)' }}>
           <button
-            onClick={() => setShowProfile(true)}
+            onClick={() => { setShowProfile(true); setMobileOpen(false); }}
             className="flex items-center gap-2 w-full px-1.5 py-1.5 rounded-lg hover:bg-white/5 transition-colors text-left"
           >
             {user?.avatar_url ? (
@@ -139,13 +160,20 @@ export default function Layout({ children, currentPageName }) {
 
         {/* Header */}
         <header
-          className="flex items-center justify-between px-6 shrink-0 border-b"
+          className="flex items-center justify-between px-3 sm:px-6 shrink-0 border-b"
           style={{ height: 52, borderColor: 'hsl(217,33%,16%)', background: 'hsl(222,47%,9%)' }}
         >
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium" style={{ color: 'hsl(215,20%,45%)' }}>PANEL</span>
-            <span className="text-xs" style={{ color: 'hsl(217,33%,35%)' }}>/</span>
-            <span className="text-sm font-semibold text-white">{currentNav?.name || currentPageName}</span>
+            {/* Hamburger — mobile only */}
+            <button
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors md:hidden"
+              onClick={() => setMobileOpen(o => !o)}
+            >
+              <Menu className="w-4 h-4" style={{ color: 'hsl(215,20%,65%)' }} />
+            </button>
+            <span className="text-xs font-medium hidden sm:inline" style={{ color: 'hsl(215,20%,45%)' }}>PANEL</span>
+            <span className="text-xs hidden sm:inline" style={{ color: 'hsl(217,33%,35%)' }}>/</span>
+            <span className="text-sm font-semibold text-white truncate max-w-[160px] sm:max-w-none">{currentNav?.name || currentPageName}</span>
           </div>
           <div className="flex items-center gap-1">
             <NotificationBell user={user} />
@@ -161,9 +189,11 @@ export default function Layout({ children, currentPageName }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-20 md:pb-6">
           {children}
         </main>
+
+        <MobileBottomNav onMenuOpen={() => setMobileOpen(true)} />
       </div>
 
       {/* ── Profile Modal ── */}

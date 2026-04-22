@@ -154,7 +154,7 @@ function ActionBtn({ label, color, onClick, disabled }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-30"
+      className="px-3 py-2 sm:py-1.5 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-30 min-h-[36px] sm:min-h-0"
       style={colors[color] || colors.gray}
     >
       {label}
@@ -192,32 +192,36 @@ function RequestCard({ req, user, users, onRefresh }) {
       assigned_to_name: user?.display_name || user?.full_name || user?.email,
       status: newStatus,
     };
-    // Start timer when moving to En progreso
     if (newStatus === 'En progreso' && !req.started_at) {
       updates.started_at = new Date().toISOString();
     }
-    await base44.entities.Request.update(req.id, updates);
-    await base44.entities.RequestHistory.create({
-      request_id: req.id,
-      from_status: req.status,
-      to_status: newStatus,
-      note: 'Atendida por técnico',
-      by_user_id: user?.email,
-      by_user_name: user?.full_name || user?.email,
-    });
-    if (req.requester_id && req.requester_id !== user?.email) {
-      await base44.entities.Notification.create({
-        user_id: req.requester_id,
-        type: 'status_change',
-        title: '🔧 Tu solicitud está siendo atendida',
-        message: `${user?.full_name || user?.email} está atendiendo tu solicitud "${req.title}".`,
+    try {
+      await base44.entities.Request.update(req.id, updates);
+      await base44.entities.RequestHistory.create({
         request_id: req.id,
-        request_title: req.title,
-        is_read: false,
+        from_status: req.status,
+        to_status: newStatus,
+        note: 'Atendida por técnico',
+        by_user_id: user?.email,
+        by_user_name: user?.full_name || user?.email,
       });
+      if (req.requester_id && req.requester_id !== user?.email) {
+        await base44.entities.Notification.create({
+          user_id: req.requester_id,
+          type: 'status_change',
+          title: '🔧 Tu solicitud está siendo atendida',
+          message: `${user?.full_name || user?.email} está atendiendo tu solicitud "${req.title}".`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      }
+      toast.success('Solicitud atendida');
+      onRefresh();
+    } catch (err) {
+      console.error('[handleAttend]', err);
+      toast.error('Error al actualizar. Inténtalo de nuevo.');
     }
-    toast.success('Solicitud atendida');
-    onRefresh();
   };
 
   const handleSendToReview = () => {
@@ -227,66 +231,71 @@ function RequestCard({ req, user, users, onRefresh }) {
 
   const handleFinalizar = async () => {
     if (req.status !== 'En revisión') return;
-    // Require approval: move to a dedicated approval step
-    // Only admin/superadmin can finalize — support must request finalization
     const completionDate = new Date().toISOString();
     const updatePayload = { status: 'Finalizada', completion_date: completionDate };
     if (req.started_at) {
-      const actualHours = parseFloat(((new Date(completionDate) - new Date(req.started_at)) / 3600000).toFixed(2));
-      updatePayload.actual_hours = actualHours;
+      updatePayload.actual_hours = parseFloat(((new Date(completionDate) - new Date(req.started_at)) / 3600000).toFixed(2));
     }
-    const updated = { ...req, ...updatePayload };
-    await base44.entities.Request.update(req.id, updatePayload);
-    await base44.entities.RequestHistory.create({
-      request_id: req.id,
-      from_status: 'En revisión',
-      to_status: 'Finalizada',
-      note: 'Aprobada y finalizada',
-      by_user_id: user?.email,
-      by_user_name: user?.full_name || user?.email,
-    });
-    if (req.requester_id && req.requester_id !== user?.email) {
-      await base44.entities.Notification.create({
-        user_id: req.requester_id,
-        type: 'status_change',
-        title: '✅ Tu solicitud fue finalizada',
-        message: `La solicitud "${req.title}" ha sido aprobada y marcada como Finalizada.`,
+    try {
+      await base44.entities.Request.update(req.id, updatePayload);
+      await base44.entities.RequestHistory.create({
         request_id: req.id,
-        request_title: req.title,
-        is_read: false,
+        from_status: 'En revisión',
+        to_status: 'Finalizada',
+        note: 'Aprobada y finalizada',
+        by_user_id: user?.email,
+        by_user_name: user?.full_name || user?.email,
       });
+      if (req.requester_id && req.requester_id !== user?.email) {
+        await base44.entities.Notification.create({
+          user_id: req.requester_id,
+          type: 'status_change',
+          title: '✅ Tu solicitud fue finalizada',
+          message: `La solicitud "${req.title}" ha sido aprobada y marcada como Finalizada.`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      }
+      if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
+        await base44.entities.Notification.create({
+          user_id: req.assigned_to_id,
+          type: 'status_change',
+          title: '✅ Solicitud aprobada y finalizada',
+          message: `La solicitud "${req.title}" fue aprobada por administración.`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      }
+      sendFinalizadaEmail({ ...req, ...updatePayload });
+      toast.success('Solicitud finalizada');
+      onRefresh();
+    } catch (err) {
+      console.error('[handleFinalizar]', err);
+      toast.error('Error al finalizar. Inténtalo de nuevo.');
     }
-    if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
-      await base44.entities.Notification.create({
-        user_id: req.assigned_to_id,
-        type: 'status_change',
-        title: '✅ Solicitud aprobada y finalizada',
-        message: `La solicitud "${req.title}" fue aprobada por administración.`,
-        request_id: req.id,
-        request_title: req.title,
-        is_read: false,
-      });
-    }
-    sendFinalizadaEmail(updated);
-    toast.success('Solicitud finalizada');
-    onRefresh();
   };
 
   const handleDelete = async () => {
     if (!window.confirm('¿Mover esta solicitud a la papelera?')) return;
-    // Soft delete: mark is_deleted + create trash record
-    await base44.entities.Request.update(req.id, { is_deleted: true });
-    const expireAt = new Date();
-    expireAt.setDate(expireAt.getDate() + 30);
-    await base44.entities.RequestTrash.create({
-      original_request_id: req.id,
-      snapshot: JSON.stringify(req),
-      deleted_by_id: user?.email,
-      deleted_by_name: user?.full_name || user?.email,
-      expire_at: expireAt.toISOString(),
-    });
-    toast.success('Solicitud movida a la papelera');
-    onRefresh();
+    try {
+      await base44.entities.Request.update(req.id, { is_deleted: true });
+      const expireAt = new Date();
+      expireAt.setDate(expireAt.getDate() + 30);
+      await base44.entities.RequestTrash.create({
+        original_request_id: req.id,
+        snapshot: JSON.stringify(req),
+        deleted_by_id: user?.email,
+        deleted_by_name: user?.full_name || user?.email,
+        expire_at: expireAt.toISOString(),
+      });
+      toast.success('Solicitud movida a la papelera');
+      onRefresh();
+    } catch (err) {
+      console.error('[handleDelete]', err);
+      toast.error('Error al eliminar. Inténtalo de nuevo.');
+    }
   };
 
   const saved = () => { setModal(null); onRefresh(); };
@@ -458,14 +467,14 @@ export default function Requests() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <div>
           <h1 className="text-xl font-bold text-white">Solicitudes de Automatización</h1>
           <p className="text-xs mt-0.5" style={{ color: 'hsl(217,91%,60%)' }}>
             Prioriza y da seguimiento con una vista enfocada en acciones.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* View toggle */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid hsl(217,33%,22%)' }}>
             <button
@@ -474,7 +483,7 @@ export default function Requests() {
               style={{ background: viewMode === 'list' ? 'hsl(217,91%,35%)' : 'hsl(222,47%,14%)', color: viewMode === 'list' ? 'white' : 'hsl(215,20%,55%)' }}
               title="Vista lista"
             >
-              <List className="w-3.5 h-3.5" /> Lista
+              <List className="w-3.5 h-3.5" /><span className="hidden sm:inline">Lista</span>
             </button>
             <button
               onClick={() => setViewMode('table')}
@@ -482,7 +491,7 @@ export default function Requests() {
               style={{ background: viewMode === 'table' ? 'hsl(217,91%,35%)' : 'hsl(222,47%,14%)', color: viewMode === 'table' ? 'white' : 'hsl(215,20%,55%)' }}
               title="Vista tabla"
             >
-              <Table className="w-3.5 h-3.5" /> Tabla
+              <Table className="w-3.5 h-3.5" /><span className="hidden sm:inline">Tabla</span>
             </button>
             <button
               onClick={() => setViewMode('kanban')}
@@ -490,7 +499,7 @@ export default function Requests() {
               style={{ background: viewMode === 'kanban' ? 'hsl(217,91%,35%)' : 'hsl(222,47%,14%)', color: viewMode === 'kanban' ? 'white' : 'hsl(215,20%,55%)' }}
               title="Tablero Kanban"
             >
-              <Kanban className="w-3.5 h-3.5" /> Kanban
+              <Kanban className="w-3.5 h-3.5" /><span className="hidden sm:inline">Kanban</span>
             </button>
           </div>
           <ExportButton requests={filtered} />
@@ -499,7 +508,7 @@ export default function Requests() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
             style={{ background: 'hsl(217,91%,45%)' }}
           >
-            <Plus className="w-4 h-4" /> Nueva Solicitud
+            <Plus className="w-4 h-4" /><span className="hidden sm:inline">Nueva Solicitud</span><span className="sm:hidden">Nueva</span>
           </button>
         </div>
       </div>
@@ -536,16 +545,16 @@ export default function Requests() {
       </div>
 
       {/* Count + pagination top */}
-      <div className="flex items-center justify-between mb-3 text-xs" style={{ color: 'hsl(215,20%,55%)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 text-xs" style={{ color: 'hsl(215,20%,55%)' }}>
         <span>Mostrando {start}–{end} de {filtered.length}</span>
-        <div className="flex items-center gap-2">
-          <span>Por página</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="hidden sm:inline">Por página</span>
           <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
             className="px-2 py-1 rounded text-xs outline-none" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white' }}>
             {PAGE_SIZES.map(s => <option key={s}>{s}</option>)}
           </select>
           <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-30">Anterior</button>
-          <span>Página {page + 1}/{totalPages}</span>
+          <span>Pág {page + 1}/{totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-30 text-blue-400 font-medium">Siguiente</button>
         </div>
       </div>

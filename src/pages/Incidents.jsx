@@ -158,7 +158,7 @@ function ReportForm({ user, activos, kbArticles, onClose, onSaved }) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: muted }}>Herramienta afectada *</label>
               <input required value={form.tool_name} onChange={e => set('tool_name', e.target.value)}
@@ -203,7 +203,7 @@ function ReportForm({ user, activos, kbArticles, onClose, onSaved }) {
               className="w-full px-3 py-2 rounded-lg text-sm resize-none" style={inputStyle} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: muted }}>Tu nombre</label>
               <input value={form.reporter_name} onChange={e => set('reporter_name', e.target.value)}
@@ -460,7 +460,7 @@ export default function Incidents() {
       </div>
 
       {/* KPI mini-cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           { label: 'Pendientes', count: pendingCount, color: '#fbbf24', icon: Clock },
           { label: 'En atención', count: inProgressCount, color: '#3b82f6', icon: Wrench },
@@ -538,18 +538,18 @@ export default function Incidents() {
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-2 shrink-0 flex-wrap">
                   <button
                     onClick={() => setChatIncident(inc)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium hover:opacity-80 transition-opacity flex items-center gap-1"
+                    className="px-3 py-2 rounded-lg text-xs font-medium hover:opacity-80 transition-opacity flex items-center gap-1 min-h-[36px]"
                     style={{ background: 'hsl(217,33%,18%)', color: 'hsl(215,20%,60%)' }}
                   >
-                    <MessageSquare className="w-3 h-3" /> Chat
+                    <MessageSquare className="w-3.5 h-3.5" /> Chat
                   </button>
                   {isStaff && (
                     <button
                       onClick={() => setManaging(inc)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium hover:opacity-80 transition-opacity"
+                      className="px-3 py-2 rounded-lg text-xs font-medium hover:opacity-80 transition-opacity min-h-[36px]"
                       style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' }}
                     >
                       Gestionar
@@ -558,11 +558,11 @@ export default function Incidents() {
                   {isAdmin && (
                     <button
                       onClick={() => handleDelete(inc)}
-                      className="p-1.5 rounded-lg hover:opacity-80 transition-opacity"
+                      className="p-2 rounded-lg hover:opacity-80 transition-opacity min-h-[36px] min-w-[36px] flex items-center justify-center"
                       style={{ background: 'hsl(0,50%,20%)', color: '#f87171' }}
                       title="Eliminar incidencia"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>

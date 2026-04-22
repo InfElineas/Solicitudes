@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -8,9 +8,10 @@ import {
 import {
   FileText, CheckCircle2, Loader2, Eye, Clock, Users, Award,
   XCircle, AlarmClock, Percent, BarChart2, Download, AlertTriangle, Mail,
-  Star, Zap, Target, TrendingUp
+  Star, Zap, Target, TrendingUp, Shield, X
 } from 'lucide-react';
 import ScheduledReportModal from '../components/analisys/ScheduleReportModal';
+import { useAuth } from '@/lib/AuthContext';
 
 const cardStyle = { background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' };
 const selectStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
@@ -51,9 +52,13 @@ function exportTablePDF(title, headers, rows) {
   win.print();
 }
 
-function StatCard({ title, value, subtitle, icon: Icon, iconColor, highlight }) {
+function StatCard({ title, value, subtitle, icon: Icon, iconColor, highlight, onClick }) {
   return (
-    <div className="rounded-xl p-5" style={cardStyle}>
+    <div
+      className={`rounded-xl p-5 transition-all ${onClick ? 'cursor-pointer hover:ring-1 hover:ring-blue-500/40 hover:brightness-110' : ''}`}
+      style={cardStyle}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium mb-1" style={{ color: muted }}>{title}</p>
@@ -61,6 +66,80 @@ function StatCard({ title, value, subtitle, icon: Icon, iconColor, highlight }) 
           {subtitle && <p className="text-xs mt-1" style={{ color: 'hsl(215,20%,50%)' }}>{subtitle}</p>}
         </div>
         {Icon && <Icon className={`w-5 h-5 mt-1 ${iconColor || 'text-gray-500'}`} />}
+      </div>
+      {onClick && <p className="text-[10px] mt-2" style={{ color: 'hsl(215,20%,40%)' }}>Click para ver detalle</p>}
+    </div>
+  );
+}
+
+function isOnDutyNow(g) {
+  if (g.estado === 'cancelada' || g.estado === 'finalizada' || g.estado === 'reemplazada') return false;
+  const now = new Date();
+  return new Date(g.inicio) <= now && new Date(g.fin) >= now;
+}
+
+function KpiDetailModal({ title, items, type, onClose, users }) {
+  const getUserName = (email) => {
+    const u = users.find(x => x.email === email);
+    return u?.full_name || email || '—';
+  };
+  const now = new Date();
+  const formatDate = (d) => d ? new Date(d).toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+  const formatOverdue = (d) => {
+    if (!d) return '—';
+    const diff = now - new Date(d);
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    if (days > 0) return `${days}d ${hours}h`;
+    return `${hours}h`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+      <div className="w-full sm:max-w-2xl max-h-[85vh] flex flex-col rounded-t-2xl sm:rounded-xl overflow-hidden"
+        style={{ background: 'hsl(222,47%,13%)', border: '1px solid hsl(217,33%,22%)' }}>
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'hsl(217,33%,18%)' }}>
+          <h3 className="font-semibold text-white">
+            {title} <span className="text-sm font-normal" style={{ color: muted }}>({items.length})</span>
+          </h3>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 text-gray-400"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="overflow-y-auto p-4 space-y-2">
+          {items.length === 0 && (
+            <p className="text-sm text-center py-10" style={{ color: muted }}>No hay solicitudes en esta categoría</p>
+          )}
+          {items.map(r => (
+            <div key={r.id} className="rounded-lg p-3" style={{ background: 'hsl(222,47%,16%)', border: '1px solid hsl(217,33%,22%)' }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-white truncate">{r.title || r.description || `#${r.id?.slice(-6)}`}</p>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    <span className="text-xs" style={{ color: muted }}>#{r.id?.slice(-6)}</span>
+                    {r.assigned_to_id && (
+                      <span className="text-xs" style={{ color: muted }}>{getUserName(r.assigned_to_id)}</span>
+                    )}
+                    {type === 'vencidas' && r.estimated_due && (
+                      <span className="text-xs font-semibold text-orange-400">Vencida hace {formatOverdue(r.estimated_due)}</span>
+                    )}
+                    {type === 'finalizada' && r.completion_date && (
+                      <span className="text-xs" style={{ color: muted }}>Finalizada: {formatDate(r.completion_date)}</span>
+                    )}
+                    {!['vencidas', 'finalizada'].includes(type) && (
+                      <span className="text-xs" style={{ color: muted }}>Creada: {formatDate(r.created_date)}</span>
+                    )}
+                    {type === 'vencidas' && r.estimated_due && (
+                      <span className="text-xs" style={{ color: muted }}>Vencía: {formatDate(r.estimated_due)}</span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-xs px-2 py-1 rounded-full whitespace-nowrap shrink-0"
+                  style={{ background: `${STATUS_COLORS[r.status] || '#888'}22`, color: STATUS_COLORS[r.status] || '#888' }}>
+                  {r.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -151,6 +230,8 @@ export default function Analysis() {
   const [techFilter, setTechFilter] = useState('all');
   const [showReportModal, setShowReportModal] = useState(false);
   const [activeTab, setActiveTab] = useState('solicitudes');
+  const [kpiModal, setKpiModal] = useState(null);
+  const { user } = useAuth();
 
   const { data: requests = [] } = useQuery({
     queryKey: ['requests-analysis'],
@@ -165,6 +246,27 @@ export default function Analysis() {
     queryKey: ['incidents'],
     queryFn: () => base44.entities.Incident.list('-created_date', 500),
   });
+  const { data: guardias = [] } = useQuery({
+    queryKey: ['guardias-analysis'],
+    queryFn: () => base44.entities.Guardia.list('-inicio', 30),
+    staleTime: 60000,
+  });
+
+  const activeGuardia = useMemo(() => guardias.find(isOnDutyNow) || null, [guardias]);
+  const isCurrentUserOnDuty = !!(user && activeGuardia && user.email === activeGuardia.tecnico_id);
+
+  useEffect(() => {
+    if (!isCurrentUserOnDuty || !activeGuardia) return;
+    const key = `guardia_notif_${activeGuardia.id}_${new Date().toDateString()}`;
+    if (localStorage.getItem(key)) return;
+    base44.entities.Notification.create({
+      user_id: user.email,
+      type: 'guardia_turno',
+      title: 'Estás de guardia',
+      message: `Tu turno de guardia está activo hasta ${new Date(activeGuardia.fin).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`,
+      read: false,
+    }).then(() => localStorage.setItem(key, '1')).catch(console.error);
+  }, [isCurrentUserOnDuty, activeGuardia, user]);
 
   const techs = users.filter(u => u.role === 'admin' || u.role === 'support');
 
@@ -480,6 +582,34 @@ export default function Analysis() {
 
   return (
     <div className="space-y-5">
+      {/* Guard banner */}
+      {activeGuardia && (
+        <div className={`flex items-center gap-3 rounded-xl px-4 py-3 ${isCurrentUserOnDuty ? 'ring-1 ring-green-500/40' : ''}`}
+          style={{ background: isCurrentUserOnDuty ? 'hsl(142,50%,12%)' : 'hsl(222,47%,14%)', border: `1px solid ${isCurrentUserOnDuty ? 'hsl(142,60%,22%)' : 'hsl(217,33%,22%)'}` }}>
+          <Shield className={`w-5 h-5 shrink-0 ${isCurrentUserOnDuty ? 'text-green-400' : 'text-blue-400'}`} />
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${isCurrentUserOnDuty ? 'text-green-300' : 'text-white'}`}>
+              {isCurrentUserOnDuty ? '¡Estás de guardia ahora!' : `Técnico de guardia: ${activeGuardia.tecnico_nombre}`}
+            </p>
+            <p className="text-xs" style={{ color: 'hsl(215,20%,55%)' }}>
+              Hasta {new Date(activeGuardia.fin).toLocaleString('es', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              {activeGuardia.tipo && activeGuardia.tipo !== 'normal' && ` · ${activeGuardia.tipo}`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* KPI detail modal */}
+      {kpiModal && (
+        <KpiDetailModal
+          title={kpiModal.title}
+          items={kpiModal.items}
+          type={kpiModal.type}
+          onClose={() => setKpiModal(null)}
+          users={users}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-xl font-bold text-white">Dashboard & Análisis</h2>
@@ -690,14 +820,21 @@ export default function Analysis() {
         <div className="space-y-5">
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard title="Total solicitudes" value={stats.total} subtitle="En el periodo" icon={FileText} iconColor="text-gray-400" />
-            <StatCard title="Finalizadas" value={stats.finalizada} subtitle={`Tasa ${stats.resolutionRate}%`} icon={CheckCircle2} iconColor="text-green-400" highlight="text-green-400" />
-            <StatCard title="En progreso" value={stats.enProgreso} icon={Loader2} iconColor="text-blue-400" highlight="text-blue-400" />
-            <StatCard title="Pendientes" value={stats.pendiente} icon={Clock} iconColor="text-yellow-400" highlight="text-yellow-400" />
-            <StatCard title="En revisión" value={stats.enRevision} icon={Eye} iconColor="text-purple-400" highlight="text-purple-400" />
-            <StatCard title="Rechazadas" value={stats.rechazada} icon={XCircle} iconColor="text-red-400" highlight="text-red-400" />
+            <StatCard title="Total solicitudes" value={stats.total} subtitle="En el periodo" icon={FileText} iconColor="text-gray-400"
+              onClick={() => setKpiModal({ title: 'Todas las solicitudes', items: periodFiltered, type: 'total' })} />
+            <StatCard title="Finalizadas" value={stats.finalizada} subtitle={`Tasa ${stats.resolutionRate}%`} icon={CheckCircle2} iconColor="text-green-400" highlight="text-green-400"
+              onClick={() => setKpiModal({ title: 'Finalizadas', items: periodFiltered.filter(r => r.status === 'Finalizada'), type: 'finalizada' })} />
+            <StatCard title="En progreso" value={stats.enProgreso} icon={Loader2} iconColor="text-blue-400" highlight="text-blue-400"
+              onClick={() => setKpiModal({ title: 'En progreso', items: periodFiltered.filter(r => r.status === 'En progreso'), type: 'progreso' })} />
+            <StatCard title="Pendientes" value={stats.pendiente} icon={Clock} iconColor="text-yellow-400" highlight="text-yellow-400"
+              onClick={() => setKpiModal({ title: 'Pendientes', items: periodFiltered.filter(r => r.status === 'Pendiente'), type: 'pendiente' })} />
+            <StatCard title="En revisión" value={stats.enRevision} icon={Eye} iconColor="text-purple-400" highlight="text-purple-400"
+              onClick={() => setKpiModal({ title: 'En revisión', items: periodFiltered.filter(r => r.status === 'En revisión'), type: 'revision' })} />
+            <StatCard title="Rechazadas" value={stats.rechazada} icon={XCircle} iconColor="text-red-400" highlight="text-red-400"
+              onClick={() => setKpiModal({ title: 'Rechazadas', items: periodFiltered.filter(r => r.status === 'Rechazada'), type: 'rechazada' })} />
             <StatCard title="Tiempo prom. resolución" value={stats.avgResolutionHrs === '—' ? '—' : `${stats.avgResolutionHrs}h`} subtitle="Para finalizadas" icon={AlarmClock} iconColor="text-orange-400" />
-            <StatCard title="⚠ Vencidas" value={stats.vencidas} subtitle="Fecha compromiso expirada" icon={AlertTriangle} iconColor="text-orange-400" highlight={stats.vencidas > 0 ? 'text-orange-400' : 'text-white'} />
+            <StatCard title="⚠ Vencidas" value={stats.vencidas} subtitle="Fecha compromiso expirada" icon={AlertTriangle} iconColor="text-orange-400" highlight={stats.vencidas > 0 ? 'text-orange-400' : 'text-white'}
+              onClick={() => setKpiModal({ title: '⚠ Vencidas', items: periodFiltered.filter(r => r.estimated_due && new Date(r.estimated_due) < new Date() && r.status !== 'Finalizada' && r.status !== 'Rechazada'), type: 'vencidas' })} />
           </div>
 
           {/* Daily trend */}

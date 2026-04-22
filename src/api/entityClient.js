@@ -9,6 +9,27 @@
  */
 import { supabase } from './supabaseClient';
 
+/** Retry a Supabase write up to `retries` times on transient network errors. */
+async function withRetry(fn, retries = 2, baseDelayMs = 800) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const isNetwork = err?.message?.includes('Failed to fetch')
+        || err?.message?.includes('NetworkError')
+        || err?.message?.includes('fetch');
+      if (isNetwork && attempt < retries) {
+        await new Promise(r => setTimeout(r, baseDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 // Map base44 entity names → Supabase table names
 const TABLE_MAP = {
   Request:         'requests',
@@ -93,28 +114,32 @@ function createEntityClient(tableName) {
         ...updates,
         updated_date: new Date().toISOString(),
       };
-      const { data, error } = await supabase
-        .from(tableName)
-        .update(payload)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) {
-        console.error(`[entityClient] ${tableName}.update error:`, error.message);
-        throw error;
-      }
-      return data;
+      return withRetry(async () => {
+        const { data, error } = await supabase
+          .from(tableName)
+          .update(payload)
+          .eq('id', id)
+          .select()
+          .maybeSingle();
+        if (error) {
+          console.error(`[entityClient] ${tableName}.update error:`, error.message);
+          throw error;
+        }
+        return data;
+      });
     },
 
     async delete(id) {
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('id', id);
-      if (error) {
-        console.error(`[entityClient] ${tableName}.delete error:`, error.message);
-        throw error;
-      }
+      return withRetry(async () => {
+        const { error } = await supabase
+          .from(tableName)
+          .delete()
+          .eq('id', id);
+        if (error) {
+          console.error(`[entityClient] ${tableName}.delete error:`, error.message);
+          throw error;
+        }
+      });
     },
 
     // Alias: get(id)

@@ -22,7 +22,7 @@ const LoadingScreen = () => (
 );
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isAuthenticated } = useAuth();
+  const { isLoadingAuth, isAuthenticated, user } = useAuth();
   const location = useLocation();
 
   if (isLoadingAuth) {
@@ -39,6 +39,11 @@ const AuthenticatedApp = () => {
   // Autenticado pero intenta ir a /login → ir al inicio
   if (location.pathname === '/login') {
     return <Navigate to="/" replace />;
+  }
+
+  // Admin siempre arranca en el dashboard
+  if (location.pathname === '/' && user?.role === 'admin') {
+    return <Navigate to="/Analysis" replace />;
   }
 
   // App principal

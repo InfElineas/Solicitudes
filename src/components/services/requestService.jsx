@@ -58,7 +58,7 @@ export async function moveToTrash(request, user, ttlDays = 30) {
 }
 
 export async function restoreFromTrash(trashItem) {
-  const snapshot = JSON.parse(trashItem.snapshot);
+  const snapshot = JSON.parse(trashItem.snapshot) || {};
   await base44.entities.Request.update(snapshot.id, { is_deleted: false });
   await base44.entities.RequestTrash.delete(trashItem.id);
 }

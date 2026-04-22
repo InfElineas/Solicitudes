@@ -127,7 +127,7 @@ function GuardiaForm({ guardia, techs, user, onClose, onSaved }) {
               {techs.map(t => <option key={t.email} value={t.email}>{t.full_name || t.email}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Inicio del turno *</label>
               <input type="datetime-local" value={form.inicio} onChange={e => set('inicio', e.target.value)}
