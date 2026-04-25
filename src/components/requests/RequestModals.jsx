@@ -54,7 +54,8 @@ function ModalWrapper({ title, subtitle, onClose, children, wide }) {
 // ---- CREATE / EDIT REQUEST MODAL ----
 export function RequestFormModal({ request, departments = [], onClose, onSaved, user }) {
   const isEdit = !!request;
-  const canCreateRequest = (user?.role || 'employee') === 'jefe';
+  const role = user?.role || 'employee';
+  const canCreateRequest = role === 'jefe' || role === 'admin';
   const [form, setForm] = useState({
     title: request?.title || '',
     description: request?.description || '',
@@ -108,7 +109,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isEdit && !canCreateRequest) {
-      toast.error('Solo jefatura de departamento puede crear solicitudes.');
+      toast.error('Solo jefatura de departamento o administración puede crear solicitudes.');
       return;
     }
     if (attachments.some(f => f.uploading)) return;

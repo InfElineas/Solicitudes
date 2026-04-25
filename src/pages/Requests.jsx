@@ -39,7 +39,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
       p_approved_by_name: user?.full_name || user?.email || '',
       p_approved_at:      new Date().toISOString(),
       p_approval_notes:   notes || null,
-      p_rejection_reason: isApprove ? null : (notes || 'Rechazada por jefatura'),
+      p_rejection_reason: isApprove ? null : (notes || 'Rechazada por administración'),
     });
 
     if (error) {
@@ -304,7 +304,7 @@ function RequestCard({ req, user, users, onRefresh }) {
   const isFinalized = req.status === 'Finalizada' || req.status === 'Rechazada';
   const [showApprove, setShowApprove] = useState(false);
   const isPendingApproval = req.status === 'Pendiente aprobación';
-  const isJefe = role === 'jefe' || role === 'admin';
+  const canApproveRequests = role === 'admin';
 
   return (
     <div className="rounded-xl p-4 flex flex-col gap-2" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,20%)' }}>
@@ -353,13 +353,13 @@ function RequestCard({ req, user, users, onRefresh }) {
       {/* Pending approval banner */}
       {isPendingApproval && (
         <div className="text-xs px-2 py-1 rounded" style={{ background: 'hsl(38,80%,15%)', color: '#fbbf24', border: '1px solid hsl(38,80%,25%)' }}>
-          ⏳ Pendiente de aprobación por jefatura
+          ⏳ Pendiente de aprobación por administración
         </div>
       )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-1.5 pt-1">
-        {isJefe && isPendingApproval && <ActionBtn label="✓ Aprobar/Rechazar" color="green" onClick={() => setShowApprove(true)} />}
+        {canApproveRequests && isPendingApproval && <ActionBtn label="✓ Aprobar/Rechazar" color="green" onClick={() => setShowApprove(true)} />}
         {canManage && !isFinalized && !isPendingApproval && <ActionBtn label={req.level ? 'Reclasificar' : 'Clasificar'} color="gray" onClick={() => setModal('classify')} />}
         {canManage && !isFinalized && !isPendingApproval && <ActionBtn label={req.assigned_to_id ? 'Reasignar' : 'Asignar'} color="gray" onClick={() => setModal('assign')} />}
         <ActionBtn label="Ver detalles" color="gray" onClick={openDetail} />
@@ -376,7 +376,7 @@ function RequestCard({ req, user, users, onRefresh }) {
         {(role === 'admin') && req.status === 'En revisión' && (
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
         )}
-        {canManage && !isFinalized && !isPendingApproval && (
+        {(role === 'admin') && !isFinalized && !isPendingApproval && (
           <ActionBtn label="Rechazar" color="red" onClick={() => setModal('reject')} />
         )}
         {canManage && <ActionBtn label="Eliminar" color="red" onClick={handleDelete} />}
@@ -427,7 +427,7 @@ export default function Requests() {
   });
 
   const role = user?.role || 'employee';
-  const canCreateRequests = role === 'jefe';
+  const canCreateRequests = role === 'jefe' || role === 'admin';
 
   const filtered = useMemo(() => {
     let r = requests;
@@ -520,7 +520,7 @@ export default function Requests() {
           className="mb-4 rounded-lg px-3 py-2 text-xs"
           style={{ background: 'hsl(38,80%,14%)', border: '1px solid hsl(38,80%,25%)', color: '#fbbf24' }}
         >
-          Solo jefatura de departamento puede crear solicitudes. Si tienes rol empleado, utiliza el módulo de Incidencias.
+          Solo jefatura de departamento o administración puede crear solicitudes. Si tienes rol empleado, utiliza el módulo de Incidencias.
         </div>
       )}
 

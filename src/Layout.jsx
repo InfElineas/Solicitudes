@@ -13,7 +13,7 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 const NAV = [
   { name: 'Solicitudes',           path: '/Requests',        icon: FileText,    roles: ['admin', 'support', 'jefe'] },
   { name: 'Mi historial',          path: '/UserHistory',     icon: FileText,    roles: ['employee'] },
-  { name: 'Incidencias',           path: '/Incidents',       icon: AlertTriangle, roles: ['admin', 'support', 'employee'] },
+  { name: 'Incidencias',           path: '/Incidents',       icon: AlertTriangle, roles: ['admin', 'support', 'employee', 'jefe'] },
   { name: 'Dashboard & Análisis',  path: '/Analysis',        icon: BarChart2,   roles: ['admin', 'support'] },
   { name: 'Guardias',              path: '/Guards',           icon: Shield,      roles: ['admin', 'support'] },
   { name: 'Activos',               path: '/Assets',           icon: Package,     roles: ['admin', 'support'] },
