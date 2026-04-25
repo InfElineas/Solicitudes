@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import CommentsSection from './CommentsSection';
 import ChatSection from './ChatSection';
-import EvidenceModal from './EvidenceModal';
 import FileAttachmentPicker from './FileAttachmentPicker';
 import AttachmentsViewer from './AttachmentsViewer';
-import { sendFinalizadaEmail, sendAssignedCriticalEmail } from '@/services/emailNotifications';
+import { sendAssignedCriticalEmail } from '@/services/emailNotifications';
 
 const inputCls = "w-full px-3 py-2 rounded-lg text-sm text-white outline-none focus:ring-2 focus:ring-blue-500";
 const inputStyle = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' };
@@ -54,6 +53,8 @@ function ModalWrapper({ title, subtitle, onClose, children, wide }) {
 // ---- CREATE / EDIT REQUEST MODAL ----
 export function RequestFormModal({ request, departments = [], onClose, onSaved, user }) {
   const isEdit = !!request;
+  const role = user?.role || 'employee';
+  const canCreateRequest = role === 'jefe' || role === 'admin';
   const [form, setForm] = useState({
     title: request?.title || '',
     description: request?.description || '',
@@ -106,6 +107,10 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isEdit && !canCreateRequest) {
+      toast.error('Solo jefatura de departamento o administración puede crear solicitudes.');
+      return;
+    }
     if (attachments.some(f => f.uploading)) return;
     setSaving(true);
     try {
@@ -131,10 +136,9 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
           });
         }
       } else {
-        const needsApproval = ['Desarrollo', 'Automatización'].includes(form.request_type);
         await base44.entities.Request.create({
           ...payload,
-          status: needsApproval ? 'Pendiente aprobación' : 'Pendiente',
+          status: 'Pendiente aprobación',
           is_deleted: false,
           requester_id: user?.email,
           requester_name: user?.full_name || user?.email,
@@ -538,6 +542,30 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
               <span className="text-red-300 text-sm">{request.rejection_reason}</span>
             </div>
           )}
+          <div className="sm:col-span-2 rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
+            <span className="block text-xs mb-2" style={{ color: 'hsl(215,20%,55%)' }}>Cambios de estado (resumen)</span>
+            {history.length === 0 ? (
+              <p className="text-xs text-gray-500">Sin historial disponible.</p>
+            ) : (
+              <div className="space-y-2">
+                {history.slice(0, 5).map((h, i) => (
+                  <div key={`${h.id || i}-${h.created_date || ''}`} className="text-xs">
+                    <p>
+                      <span className="text-gray-400">{h.from_status ? `${h.from_status} → ` : ''}</span>
+                      <span className="text-white font-medium">{h.to_status || '—'}</span>
+                    </p>
+                    {h.note && <p className="text-gray-400 mt-0.5">{h.note}</p>}
+                    <p className="text-[11px] mt-0.5" style={{ color: 'hsl(215,20%,45%)' }}>
+                      {h.by_user_name || 'Sistema'} · {h.created_date ? new Date(h.created_date).toLocaleString('es') : '—'}
+                    </p>
+                  </div>
+                ))}
+                {history.length > 5 && (
+                  <p className="text-[11px] text-blue-300">Ver pestaña “Historial” para el detalle completo.</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

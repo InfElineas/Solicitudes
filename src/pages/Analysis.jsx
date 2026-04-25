@@ -3,12 +3,11 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis
+  LineChart, Line, CartesianGrid, Legend
 } from 'recharts';
 import {
-  FileText, CheckCircle2, Loader2, Eye, Clock, Users, Award,
-  XCircle, AlarmClock, Percent, BarChart2, Download, AlertTriangle, Mail,
-  Star, Zap, Target, TrendingUp, Shield, X
+  FileText, CheckCircle2, Loader2, Eye, Clock, Award,
+  XCircle, AlarmClock, Percent, Download, AlertTriangle, Mail, Zap, Target, TrendingUp, Shield, X
 } from 'lucide-react';
 import ScheduledReportModal from '../components/analisys/ScheduleReportModal';
 import { useAuth } from '@/lib/AuthContext';
