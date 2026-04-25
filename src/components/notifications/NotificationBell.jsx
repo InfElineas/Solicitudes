@@ -21,14 +21,31 @@ export default function NotificationBell({ user }) {
     }
   }, []);
 
-  /** Fire a browser push notification if permission granted */
-  const firePush = (/** @type {any} */ n) => {
+  /** Fire a browser notification (via SW when available) */
+  const firePush = async (/** @type {any} */ n) => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.showNotification(n.title || 'Nueva notificación', {
+          body: n.message || '',
+          icon: '/favicon.ico',
+          badge: '/favicon.png',
+          tag: n.id, // prevents duplicates
+          data: {
+            requestId: n.request_id || null,
+            requestTitle: n.request_title || null,
+          },
+          renotify: false,
+          requireInteraction: false,
+        });
+        return;
+      }
+
       new Notification(n.title || 'Nueva notificación', {
         body: n.message || '',
         icon: '/favicon.ico',
-        tag: n.id, // prevents duplicate if browser deduplicates
+        tag: n.id,
       });
     } catch {}
   };
