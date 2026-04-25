@@ -54,6 +54,8 @@ function ModalWrapper({ title, subtitle, onClose, children, wide }) {
 // ---- CREATE / EDIT REQUEST MODAL ----
 export function RequestFormModal({ request, departments = [], onClose, onSaved, user }) {
   const isEdit = !!request;
+  const role = user?.role || 'employee';
+  const canCreateRequest = role === 'jefe' || role === 'admin';
   const [form, setForm] = useState({
     title: request?.title || '',
     description: request?.description || '',
@@ -106,6 +108,10 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isEdit && !canCreateRequest) {
+      toast.error('Solo jefatura de departamento o administración puede crear solicitudes.');
+      return;
+    }
     if (attachments.some(f => f.uploading)) return;
     setSaving(true);
     try {
@@ -131,10 +137,9 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
           });
         }
       } else {
-        const needsApproval = ['Desarrollo', 'Automatización'].includes(form.request_type);
         await base44.entities.Request.create({
           ...payload,
-          status: needsApproval ? 'Pendiente aprobación' : 'Pendiente',
+          status: 'Pendiente aprobación',
           is_deleted: false,
           requester_id: user?.email,
           requester_name: user?.full_name || user?.email,
