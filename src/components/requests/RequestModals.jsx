@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import CommentsSection from './CommentsSection';
 import ChatSection from './ChatSection';
-import EvidenceModal from './EvidenceModal';
 import FileAttachmentPicker from './FileAttachmentPicker';
 import AttachmentsViewer from './AttachmentsViewer';
-import { sendFinalizadaEmail, sendAssignedCriticalEmail } from '@/services/emailNotifications';
+import { sendAssignedCriticalEmail } from '@/services/emailNotifications';
 
 const inputCls = "w-full px-3 py-2 rounded-lg text-sm text-white outline-none focus:ring-2 focus:ring-blue-500";
 const inputStyle = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' };
@@ -54,6 +53,8 @@ function ModalWrapper({ title, subtitle, onClose, children, wide }) {
 // ---- CREATE / EDIT REQUEST MODAL ----
 export function RequestFormModal({ request, departments = [], onClose, onSaved, user }) {
   const isEdit = !!request;
+  const role = user?.role || 'employee';
+  const canCreateRequest = role === 'jefe' || role === 'admin';
   const [form, setForm] = useState({
     title: request?.title || '',
     description: request?.description || '',
@@ -106,6 +107,10 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isEdit && !canCreateRequest) {
+      toast.error('Solo jefatura de departamento o administración puede crear solicitudes.');
+      return;
+    }
     if (attachments.some(f => f.uploading)) return;
     setSaving(true);
     try {
@@ -131,10 +136,9 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
           });
         }
       } else {
-        const needsApproval = ['Desarrollo', 'Automatización'].includes(form.request_type);
         await base44.entities.Request.create({
           ...payload,
-          status: needsApproval ? 'Pendiente aprobación' : 'Pendiente',
+          status: 'Pendiente aprobación',
           is_deleted: false,
           requester_id: user?.email,
           requester_name: user?.full_name || user?.email,
@@ -465,12 +469,16 @@ export function RejectModal({ request, onClose, onSaved, user }) {
 // ---- DETAIL MODAL ----
 export function DetailModal({ request, history = [], worklogs = [], onClose, user }) {
   const [tab, setTab] = useState('resumen');
+  const normalizeStatus = (s = '') => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const extractLinks = (text = '') => (text.match(/https?:\/\/[^\s|)]+/g) || []);
+  const evidenceHistory = history.filter(h => normalizeStatus(h?.to_status) === 'en revision');
 
   const tabs = [
     { key: 'resumen', label: 'Resumen' },
     { key: 'chat', label: '💬 Chat' },
     { key: 'comentarios', label: 'Comentarios' },
     { key: 'adjuntos', label: `Adjuntos${request.file_urls?.length ? ` (${request.file_urls.length})` : ''}` },
+    { key: 'evidencias', label: `Evidencias${evidenceHistory.length ? ` (${evidenceHistory.length})` : ''}` },
     { key: 'historial', label: 'Historial' },
     { key: 'worklogs', label: 'Worklogs' },
   ];
@@ -538,6 +546,30 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
               <span className="text-red-300 text-sm">{request.rejection_reason}</span>
             </div>
           )}
+          <div className="sm:col-span-2 rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
+            <span className="block text-xs mb-2" style={{ color: 'hsl(215,20%,55%)' }}>Cambios de estado (resumen)</span>
+            {history.length === 0 ? (
+              <p className="text-xs text-gray-500">Sin historial disponible.</p>
+            ) : (
+              <div className="space-y-2">
+                {history.slice(0, 5).map((h, i) => (
+                  <div key={`${h.id || i}-${h.created_date || ''}`} className="text-xs">
+                    <p>
+                      <span className="text-gray-400">{h.from_status ? `${h.from_status} → ` : ''}</span>
+                      <span className="text-white font-medium">{h.to_status || '—'}</span>
+                    </p>
+                    {h.note && <p className="text-gray-400 mt-0.5">{h.note}</p>}
+                    <p className="text-[11px] mt-0.5" style={{ color: 'hsl(215,20%,45%)' }}>
+                      {h.by_user_name || 'Sistema'} · {h.created_date ? new Date(h.created_date).toLocaleString('es') : '—'}
+                    </p>
+                  </div>
+                ))}
+                {history.length > 5 && (
+                  <p className="text-[11px] text-blue-300">Ver pestaña “Historial” para el detalle completo.</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -569,6 +601,51 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
 
       {tab === 'adjuntos' && (
         <AttachmentsViewer urls={request.file_urls || []} />
+      )}
+
+      {tab === 'evidencias' && (
+        <div className="space-y-3">
+          {evidenceHistory.length === 0 ? (
+            <p className="text-sm text-gray-500">Sin evidencias registradas en cambios a revisión.</p>
+          ) : evidenceHistory.map((h, i) => {
+            const links = extractLinks(h.note || '');
+            return (
+              <div key={`${h.id || i}-${h.created_date || ''}`} className="rounded-lg p-3" style={{ background: 'hsl(222,47%,17%)', border: '1px solid hsl(217,33%,22%)' }}>
+                <p className="text-xs text-white font-semibold">Evidencia #{evidenceHistory.length - i}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'hsl(215,20%,55%)' }}>
+                  {h.by_user_name || 'Sistema'} · {h.created_date ? new Date(h.created_date).toLocaleString('es') : '—'}
+                </p>
+                {h.note && (
+                  <p className="text-sm mt-2 whitespace-pre-wrap break-words" style={{ color: 'hsl(215,20%,80%)' }}>
+                    {h.note}
+                  </p>
+                )}
+                {links.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {links.map((link, idx) => (
+                      <a
+                        key={`${link}-${idx}`}
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-xs break-all underline text-blue-300 hover:text-blue-200"
+                      >
+                        {link}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="rounded-lg p-3" style={{ background: 'hsl(222,47%,17%)', border: '1px solid hsl(217,33%,22%)' }}>
+            <p className="text-xs font-medium mb-2" style={{ color: 'hsl(215,20%,65%)' }}>
+              Archivos de evidencia adjuntos
+            </p>
+            <AttachmentsViewer urls={request.file_urls || []} />
+          </div>
+        </div>
       )}
 
       {tab === 'worklogs' && (

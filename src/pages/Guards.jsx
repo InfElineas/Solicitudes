@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Plus, Clock, CheckCircle2, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User } from 'lucide-react';
+import { Shield, Plus, Clock, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User } from 'lucide-react';
 import MonthlyPlanner from '../components/guards/MonthlyPlanner';
 import { toast } from 'sonner';
 

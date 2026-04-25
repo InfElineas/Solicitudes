@@ -6,6 +6,7 @@ const AuthContext = createContext(/** @type {any} */ (null));
 const SESSION_START_KEY  = 'app_session_start';
 const PROFILE_CACHE_KEY  = 'app_user_profile';
 const MAX_SESSION_MS     = 24 * 60 * 60 * 1000; // 24 horas
+const SESSION_TIMEOUT_MS = 2500; // no bloquear la UI demasiado tiempo en recarga
 
 function isSessionExpired() {
   const start = parseInt(localStorage.getItem(SESSION_START_KEY) || '0', 10);
@@ -64,6 +65,7 @@ function buildUserObject(supabaseUser, profile) {
   };
 }
 
+const PROFILE_DB_TIMEOUT_MS = 4000;
 /** @param {number} ms */
 const rejectAfter = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('db-timeout')), ms));
 
@@ -71,7 +73,7 @@ const rejectAfter = (ms) => new Promise((_, reject) => setTimeout(() => reject(n
 async function fetchProfile(supabaseUser) {
   const { data: existing } = await Promise.race([
     supabase.from('app_users').select('*').eq('email', supabaseUser.email).maybeSingle(),
-    rejectAfter(8000),
+    rejectAfter(PROFILE_DB_TIMEOUT_MS),
   ]);
   if (existing) return existing;
 
@@ -84,7 +86,7 @@ async function fetchProfile(supabaseUser) {
       avatar_url:   supabaseUser.user_metadata?.avatar_url || null,
       role:         'employee',
     }).select('*').maybeSingle(),
-    rejectAfter(8000),
+    rejectAfter(PROFILE_DB_TIMEOUT_MS),
   ]);
   return created ?? null;
 }
@@ -133,7 +135,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const sessionResult = await withTimeout(
           supabase.auth.getSession(),
-          8000,
+          SESSION_TIMEOUT_MS,
           /** @type {any} */ ({ data: { session: null } })
         );
 
@@ -141,14 +143,17 @@ export const AuthProvider = ({ children }) => {
 
         const session = sessionResult?.data?.session;
         if (session?.user) {
-          // Aplicar caché inmediatamente para evitar flash de "Empleado"
+          // Mostrar usuario inmediatamente (caché o JWT) para no bloquear la app.
           const cached = getCachedProfile(session.user.email);
           if (cached) {
             setUser(cached);
-            setIsAuthenticated(true);
+          } else {
+            setUser(buildUserObject(session.user, null));
           }
-          // Luego refrescar desde la DB en segundo plano
-          await loadProfile(session.user, setUser, setIsAuthenticated);
+          setIsAuthenticated(true);
+
+          // Refrescar desde la DB en segundo plano (sin bloquear pantalla de carga).
+          loadProfile(session.user, setUser, setIsAuthenticated).catch(() => {});
         }
       } catch (/** @type {any} */ err) {
         console.warn('[AuthContext] init error:', err?.message);
@@ -165,7 +170,10 @@ export const AuthProvider = ({ children }) => {
       if (event === 'SIGNED_IN') {
         localStorage.setItem(SESSION_START_KEY, Date.now().toString());
         if (session?.user) {
-          await loadProfile(session.user, setUser, setIsAuthenticated);
+          const cached = getCachedProfile(session.user.email);
+          setUser(cached || buildUserObject(session.user, null));
+          setIsAuthenticated(true);
+          loadProfile(session.user, setUser, setIsAuthenticated).catch(() => {});
         }
       } else if (event === 'TOKEN_REFRESHED') {
         if (isSessionExpired()) {
@@ -174,7 +182,10 @@ export const AuthProvider = ({ children }) => {
         }
         // Token refresh: si la DB falla, el caché mantiene el rol correcto
         if (session?.user) {
-          await loadProfile(session.user, setUser, setIsAuthenticated);
+          const cached = getCachedProfile(session.user.email);
+          setUser(cached || buildUserObject(session.user, null));
+          setIsAuthenticated(true);
+          loadProfile(session.user, setUser, setIsAuthenticated).catch(() => {});
         }
       } else if (event === 'SIGNED_OUT') {
         clearCache();

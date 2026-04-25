@@ -39,7 +39,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
       p_approved_by_name: user?.full_name || user?.email || '',
       p_approved_at:      new Date().toISOString(),
       p_approval_notes:   notes || null,
-      p_rejection_reason: isApprove ? null : (notes || 'Rechazada por jefatura'),
+      p_rejection_reason: isApprove ? null : (notes || 'Rechazada por administración'),
     });
 
     if (error) {
@@ -113,6 +113,51 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
   );
 }
 
+function ReturnToDevelopmentModal({ request, onClose, onConfirm }) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputStyle2 = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)', color: 'white', outline: 'none' };
+
+  const handleConfirm = async () => {
+    if (!reason.trim() || saving) return;
+    setSaving(true);
+    try {
+      await onConfirm(reason.trim());
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="rounded-xl p-6 w-full max-w-md" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)' }} onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-white mb-1">Devolver a desarrollo</h3>
+        <p className="text-xs mb-4" style={{ color: 'hsl(215,20%,55%)' }}>{request.title}</p>
+        <label className="text-xs font-medium text-gray-400 mb-1 block">Motivo del ajuste *</label>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={4}
+          className="w-full px-3 py-2 rounded-lg text-sm resize-none"
+          style={inputStyle2}
+          placeholder="Ej: Falta validar criterios funcionales y corregir el flujo X..."
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cancelar</button>
+          <button
+            onClick={handleConfirm}
+            disabled={saving || !reason.trim()}
+            className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50"
+            style={{ background: 'hsl(217,91%,45%)' }}
+          >
+            {saving ? '...' : 'Devolver'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STATUSES = ['Pendiente aprobación', 'Pendiente', 'En progreso', 'En revisión', 'Finalizada', 'Rechazada'];
 const REQUEST_TYPES = ['Desarrollo', 'Corrección de errores', 'Mejora funcional', 'Mejora visual', 'Migración', 'Automatización'];
 const LEVELS = ['Fácil', 'Medio', 'Difícil'];
@@ -133,6 +178,13 @@ const STATUS_COLORS = {
   'Finalizada': { bg: 'hsl(142,60%,18%)', text: '#4ade80' },
   'Rechazada': { bg: 'hsl(0,60%,20%)', text: '#f87171' },
 };
+
+const normalizeStatus = (value = '') =>
+  String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 
 function Pill({ label, colorCfg }) {
   if (!label || !colorCfg) return null;
@@ -165,6 +217,7 @@ function ActionBtn({ label, color, onClick, disabled }) {
 function RequestCard({ req, user, users, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [showEvidence, setShowEvidence] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
   const [history, setHistory] = useState([]);
   const [worklogs, setWorklogs] = useState([]);
   const qc = useQueryClient();
@@ -174,6 +227,7 @@ function RequestCard({ req, user, users, onRefresh }) {
   const role = user?.role || 'employee';
   const canManage = role === 'admin' || role === 'support';
   const isRequester = req.requester_id === user?.email;
+  const statusKey = normalizeStatus(req.status);
 
   const openDetail = async () => {
     const [h, w] = await Promise.all([
@@ -225,12 +279,12 @@ function RequestCard({ req, user, users, onRefresh }) {
   };
 
   const handleSendToReview = () => {
-    if (req.status !== 'En progreso') return;
+    if (statusKey !== 'en progreso') return;
     setShowEvidence(true);
   };
 
   const handleFinalizar = async () => {
-    if (req.status !== 'En revisión') return;
+    if (statusKey !== 'en revision') return;
     const completionDate = new Date().toISOString();
     const updatePayload = { status: 'Finalizada', completion_date: completionDate };
     if (req.started_at) {
@@ -277,6 +331,38 @@ function RequestCard({ req, user, users, onRefresh }) {
     }
   };
 
+  const handleReturnToDevelopment = async (reason) => {
+    if (statusKey !== 'en revision') return;
+    try {
+      await base44.entities.Request.update(req.id, { status: 'En progreso' });
+      await base44.entities.RequestHistory.create({
+        request_id: req.id,
+        from_status: 'En revisión',
+        to_status: 'En progreso',
+        note: `Devuelta a desarrollo: ${reason}`,
+        by_user_id: user?.email,
+        by_user_name: user?.full_name || user?.email,
+      });
+      if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
+        await base44.entities.Notification.create({
+          user_id: req.assigned_to_id,
+          type: 'status_change',
+          title: '↩️ Solicitud devuelta a desarrollo',
+          message: `La solicitud "${req.title}" fue devuelta a En progreso. Motivo: ${reason}`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      }
+      toast.success('Solicitud devuelta a desarrollo');
+      setShowReturnModal(false);
+      onRefresh();
+    } catch (err) {
+      console.error('[handleReturnToDevelopment]', err);
+      toast.error('No se pudo devolver la solicitud a desarrollo.');
+    }
+  };
+
   const handleDelete = async () => {
     if (!window.confirm('¿Mover esta solicitud a la papelera?')) return;
     try {
@@ -301,10 +387,14 @@ function RequestCard({ req, user, users, onRefresh }) {
   const saved = () => { setModal(null); onRefresh(); };
 
   const isAssignedToMe = req.assigned_to_id === user?.email;
-  const isFinalized = req.status === 'Finalizada' || req.status === 'Rechazada';
+  const isFinalized = statusKey === 'finalizada' || statusKey === 'rechazada';
   const [showApprove, setShowApprove] = useState(false);
-  const isPendingApproval = req.status === 'Pendiente aprobación';
-  const isJefe = role === 'jefe' || role === 'admin';
+  const isPendingApproval = statusKey === 'pendiente aprobacion';
+  const isInReview = statusKey === 'en revision';
+  const isPending = statusKey === 'pendiente';
+  const isInProgress = statusKey === 'en progreso';
+  const canApproveRequests = role === 'admin';
+  const canReturnToDevelopment = isInReview && (isRequester || role === 'admin');
 
   return (
     <div className="rounded-xl p-4 flex flex-col gap-2" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,20%)' }}>
@@ -353,31 +443,31 @@ function RequestCard({ req, user, users, onRefresh }) {
       {/* Pending approval banner */}
       {isPendingApproval && (
         <div className="text-xs px-2 py-1 rounded" style={{ background: 'hsl(38,80%,15%)', color: '#fbbf24', border: '1px solid hsl(38,80%,25%)' }}>
-          ⏳ Pendiente de aprobación por jefatura
+          ⏳ Pendiente de aprobación por administración
         </div>
       )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-1.5 pt-1">
-        {isJefe && isPendingApproval && <ActionBtn label="✓ Aprobar/Rechazar" color="green" onClick={() => setShowApprove(true)} />}
+        {canApproveRequests && isPendingApproval && <ActionBtn label="✓ Aprobar/Rechazar" color="green" onClick={() => setShowApprove(true)} />}
         {canManage && !isFinalized && !isPendingApproval && <ActionBtn label={req.level ? 'Reclasificar' : 'Clasificar'} color="gray" onClick={() => setModal('classify')} />}
         {canManage && !isFinalized && !isPendingApproval && <ActionBtn label={req.assigned_to_id ? 'Reasignar' : 'Asignar'} color="gray" onClick={() => setModal('assign')} />}
         <ActionBtn label="Ver detalles" color="gray" onClick={openDetail} />
         {(canManage || isRequester) && !isFinalized && !isPendingApproval && (
           <ActionBtn label="Editar" color="gray" onClick={() => setModal('edit')} />
         )}
-        {canManage && req.status === 'Pendiente' && (
+        {canManage && isPending && (
           <ActionBtn label="Atender" color="blue" onClick={handleAttend} />
         )}
-        {canManage && req.status === 'En progreso' && (
+        {canManage && isInProgress && (
           <ActionBtn label="Enviar a revisión" color="blue" onClick={handleSendToReview} />
         )}
         {/* Only admin/superadmin can finalize — tech (support) can only send to review */}
-        {(role === 'admin') && req.status === 'En revisión' && (
+        {(role === 'admin') && isInReview && (
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
         )}
-        {canManage && !isFinalized && !isPendingApproval && (
-          <ActionBtn label="Rechazar" color="red" onClick={() => setModal('reject')} />
+        {canReturnToDevelopment && (
+          <ActionBtn label="↩ Devolver a desarrollo" color="gray" onClick={() => setShowReturnModal(true)} />
         )}
         {canManage && <ActionBtn label="Eliminar" color="red" onClick={handleDelete} />}
       </div>
@@ -390,6 +480,13 @@ function RequestCard({ req, user, users, onRefresh }) {
       {modal === 'detail' && <DetailModal request={req} history={history} worklogs={worklogs} onClose={() => setModal(null)} user={user} />}
       {showEvidence && <EvidenceModal request={req} user={user} onClose={() => setShowEvidence(false)} onSaved={() => { setShowEvidence(false); onRefresh(); }} />}
       {showApprove && <ApprovalModal request={req} user={user} onClose={() => setShowApprove(false)} onSaved={saved} />}
+      {showReturnModal && (
+        <ReturnToDevelopmentModal
+          request={req}
+          onClose={() => setShowReturnModal(false)}
+          onConfirm={handleReturnToDevelopment}
+        />
+      )}
     </div>
   );
 }
@@ -427,6 +524,7 @@ export default function Requests() {
   });
 
   const role = user?.role || 'employee';
+  const canCreateRequests = role === 'jefe' || role === 'admin';
 
   const filtered = useMemo(() => {
     let r = requests;
@@ -503,15 +601,25 @@ export default function Requests() {
             </button>
           </div>
           <ExportButton requests={filtered} />
-          <button
-            onClick={() => setShowNew(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
-            style={{ background: 'hsl(217,91%,45%)' }}
-          >
-            <Plus className="w-4 h-4" /><span className="hidden sm:inline">Nueva Solicitud</span><span className="sm:hidden">Nueva</span>
-          </button>
+          {canCreateRequests && (
+            <button
+              onClick={() => setShowNew(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
+              style={{ background: 'hsl(217,91%,45%)' }}
+            >
+              <Plus className="w-4 h-4" /><span className="hidden sm:inline">Nueva Solicitud</span><span className="sm:hidden">Nueva</span>
+            </button>
+          )}
         </div>
       </div>
+      {!canCreateRequests && (
+        <div
+          className="mb-4 rounded-lg px-3 py-2 text-xs"
+          style={{ background: 'hsl(38,80%,14%)', border: '1px solid hsl(38,80%,25%)', color: '#fbbf24' }}
+        >
+          Solo jefatura de departamento o administración puede crear solicitudes. Si tienes rol empleado, utiliza el módulo de Incidencias.
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="relative mt-4 mb-2">
@@ -602,7 +710,7 @@ export default function Requests() {
       </div>
 
       {/* New Request Modal */}
-      {showNew && (
+      {showNew && canCreateRequests && (
         <RequestFormModal
           departments={departments}
           onClose={() => setShowNew(false)}

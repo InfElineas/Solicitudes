@@ -2,42 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
-import { FileText, AlertTriangle, Bell, BarChart2, BookOpen, Menu } from 'lucide-react';
+import { FileText, AlertTriangle, BarChart2, BookOpen, Menu } from 'lucide-react';
 
 export default function MobileBottomNav({ onMenuOpen }) {
   const { user } = useAuth();
   const location = useLocation();
-  const [unreadNotif, setUnreadNotif] = useState(0);
   const [pendingInc, setPendingInc] = useState(0);
 
   const role = user?.role || 'employee';
   const isStaff = role === 'admin' || role === 'support';
+  const canAccessRequests = role === 'admin' || role === 'support' || role === 'jefe';
 
   useEffect(() => {
     if (!user?.email) return;
-    base44.entities.Notification
-      .filter({ user_id: user.email, is_read: false })
-      .then(d => setUnreadNotif((d || []).length))
-      .catch(() => {});
     base44.entities.Incident
       .filter({ status: 'Pendiente' })
       .then(d => setPendingInc((d || []).length))
       .catch(() => {});
   }, [user?.email]);
 
-  const primaryItems = [
-    { path: '/Requests',    Icon: FileText,       label: 'Solicitudes' },
-    { path: '/Incidents',   Icon: AlertTriangle,  label: 'Incidencias', badge: pendingInc },
-    ...(isStaff
-      ? [{ path: '/Analysis', Icon: BarChart2, label: 'Análisis' }]
-      : [{ path: '/KnowledgeBase', Icon: BookOpen, label: 'Base KB' }]
-    ),
-    { path: '/Requests',    Icon: Bell,           label: 'Notifs', badge: unreadNotif, notifOnly: true },
-  ];
-
-  // Replace the Notifs item with a real path when notification page exists
   const items = [
-    { path: '/Requests',    Icon: FileText,       label: 'Solicitudes' },
+    ...(canAccessRequests ? [{ path: '/Requests', Icon: FileText, label: 'Solicitudes' }] : []),
     { path: '/Incidents',   Icon: AlertTriangle,  label: 'Incidencias', badge: pendingInc },
     ...(isStaff
       ? [{ path: '/Analysis', Icon: BarChart2, label: 'Análisis' }]
