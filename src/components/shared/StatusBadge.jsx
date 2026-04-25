@@ -1,5 +1,4 @@
 import React from 'react';
-import { Badge } from "@/components/ui/badge";
 import { Clock, Loader2, Eye, CheckCircle2, XCircle } from "lucide-react";
 
 const statusConfig = {
