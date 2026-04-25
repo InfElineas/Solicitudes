@@ -134,6 +134,13 @@ const STATUS_COLORS = {
   'Rechazada': { bg: 'hsl(0,60%,20%)', text: '#f87171' },
 };
 
+const normalizeStatus = (value = '') =>
+  String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
 function Pill({ label, colorCfg }) {
   if (!label || !colorCfg) return null;
   return (
@@ -174,6 +181,7 @@ function RequestCard({ req, user, users, onRefresh }) {
   const role = user?.role || 'employee';
   const canManage = role === 'admin' || role === 'support';
   const isRequester = req.requester_id === user?.email;
+  const statusKey = normalizeStatus(req.status);
 
   const openDetail = async () => {
     const [h, w] = await Promise.all([
@@ -225,12 +233,12 @@ function RequestCard({ req, user, users, onRefresh }) {
   };
 
   const handleSendToReview = () => {
-    if (req.status !== 'En progreso') return;
+    if (statusKey !== 'en progreso') return;
     setShowEvidence(true);
   };
 
   const handleFinalizar = async () => {
-    if (req.status !== 'En revisión') return;
+    if (statusKey !== 'en revision') return;
     const completionDate = new Date().toISOString();
     const updatePayload = { status: 'Finalizada', completion_date: completionDate };
     if (req.started_at) {
@@ -278,7 +286,7 @@ function RequestCard({ req, user, users, onRefresh }) {
   };
 
   const handleReturnToDevelopment = async () => {
-    if (req.status !== 'En revisión') return;
+    if (statusKey !== 'en revision') return;
     const reason = window.prompt('Indica qué debe ajustarse antes de continuar:');
     if (reason === null) return;
     if (!reason.trim()) {
@@ -338,11 +346,14 @@ function RequestCard({ req, user, users, onRefresh }) {
   const saved = () => { setModal(null); onRefresh(); };
 
   const isAssignedToMe = req.assigned_to_id === user?.email;
-  const isFinalized = req.status === 'Finalizada' || req.status === 'Rechazada';
+  const isFinalized = statusKey === 'finalizada' || statusKey === 'rechazada';
   const [showApprove, setShowApprove] = useState(false);
-  const isPendingApproval = req.status === 'Pendiente aprobación';
+  const isPendingApproval = statusKey === 'pendiente aprobacion';
+  const isInReview = statusKey === 'en revision';
+  const isPending = statusKey === 'pendiente';
+  const isInProgress = statusKey === 'en progreso';
   const canApproveRequests = role === 'admin';
-  const canReturnToDevelopment = req.status === 'En revisión' && (isRequester || role === 'admin');
+  const canReturnToDevelopment = isInReview && (isRequester || role === 'admin');
 
   return (
     <div className="rounded-xl p-4 flex flex-col gap-2" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,20%)' }}>
@@ -404,21 +415,18 @@ function RequestCard({ req, user, users, onRefresh }) {
         {(canManage || isRequester) && !isFinalized && !isPendingApproval && (
           <ActionBtn label="Editar" color="gray" onClick={() => setModal('edit')} />
         )}
-        {canManage && req.status === 'Pendiente' && (
+        {canManage && isPending && (
           <ActionBtn label="Atender" color="blue" onClick={handleAttend} />
         )}
-        {canManage && req.status === 'En progreso' && (
+        {canManage && isInProgress && (
           <ActionBtn label="Enviar a revisión" color="blue" onClick={handleSendToReview} />
         )}
         {/* Only admin/superadmin can finalize — tech (support) can only send to review */}
-        {(role === 'admin') && req.status === 'En revisión' && (
+        {(role === 'admin') && isInReview && (
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
         )}
         {canReturnToDevelopment && (
           <ActionBtn label="↩ Devolver a desarrollo" color="gray" onClick={handleReturnToDevelopment} />
-        )}
-        {(role === 'admin') && !isFinalized && !isPendingApproval && (
-          <ActionBtn label="Rechazar" color="red" onClick={() => setModal('reject')} />
         )}
         {canManage && <ActionBtn label="Eliminar" color="red" onClick={handleDelete} />}
       </div>
