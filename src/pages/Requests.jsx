@@ -113,6 +113,51 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
   );
 }
 
+function ReturnToDevelopmentModal({ request, onClose, onConfirm }) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputStyle2 = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)', color: 'white', outline: 'none' };
+
+  const handleConfirm = async () => {
+    if (!reason.trim() || saving) return;
+    setSaving(true);
+    try {
+      await onConfirm(reason.trim());
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="rounded-xl p-6 w-full max-w-md" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)' }} onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-white mb-1">Devolver a desarrollo</h3>
+        <p className="text-xs mb-4" style={{ color: 'hsl(215,20%,55%)' }}>{request.title}</p>
+        <label className="text-xs font-medium text-gray-400 mb-1 block">Motivo del ajuste *</label>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={4}
+          className="w-full px-3 py-2 rounded-lg text-sm resize-none"
+          style={inputStyle2}
+          placeholder="Ej: Falta validar criterios funcionales y corregir el flujo X..."
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cancelar</button>
+          <button
+            onClick={handleConfirm}
+            disabled={saving || !reason.trim()}
+            className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50"
+            style={{ background: 'hsl(217,91%,45%)' }}
+          >
+            {saving ? '...' : 'Devolver'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STATUSES = ['Pendiente aprobación', 'Pendiente', 'En progreso', 'En revisión', 'Finalizada', 'Rechazada'];
 const REQUEST_TYPES = ['Desarrollo', 'Corrección de errores', 'Mejora funcional', 'Mejora visual', 'Migración', 'Automatización'];
 const LEVELS = ['Fácil', 'Medio', 'Difícil'];
@@ -172,6 +217,7 @@ function ActionBtn({ label, color, onClick, disabled }) {
 function RequestCard({ req, user, users, onRefresh }) {
   const [modal, setModal] = useState(null);
   const [showEvidence, setShowEvidence] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
   const [history, setHistory] = useState([]);
   const [worklogs, setWorklogs] = useState([]);
   const qc = useQueryClient();
@@ -285,21 +331,15 @@ function RequestCard({ req, user, users, onRefresh }) {
     }
   };
 
-  const handleReturnToDevelopment = async () => {
+  const handleReturnToDevelopment = async (reason) => {
     if (statusKey !== 'en revision') return;
-    const reason = window.prompt('Indica qué debe ajustarse antes de continuar:');
-    if (reason === null) return;
-    if (!reason.trim()) {
-      toast.error('Debes indicar un motivo para devolver a desarrollo.');
-      return;
-    }
     try {
       await base44.entities.Request.update(req.id, { status: 'En progreso' });
       await base44.entities.RequestHistory.create({
         request_id: req.id,
         from_status: 'En revisión',
         to_status: 'En progreso',
-        note: `Devuelta a desarrollo: ${reason.trim()}`,
+        note: `Devuelta a desarrollo: ${reason}`,
         by_user_id: user?.email,
         by_user_name: user?.full_name || user?.email,
       });
@@ -308,13 +348,14 @@ function RequestCard({ req, user, users, onRefresh }) {
           user_id: req.assigned_to_id,
           type: 'status_change',
           title: '↩️ Solicitud devuelta a desarrollo',
-          message: `La solicitud "${req.title}" fue devuelta a En progreso. Motivo: ${reason.trim()}`,
+          message: `La solicitud "${req.title}" fue devuelta a En progreso. Motivo: ${reason}`,
           request_id: req.id,
           request_title: req.title,
           is_read: false,
         });
       }
       toast.success('Solicitud devuelta a desarrollo');
+      setShowReturnModal(false);
       onRefresh();
     } catch (err) {
       console.error('[handleReturnToDevelopment]', err);
@@ -426,7 +467,7 @@ function RequestCard({ req, user, users, onRefresh }) {
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
         )}
         {canReturnToDevelopment && (
-          <ActionBtn label="↩ Devolver a desarrollo" color="gray" onClick={handleReturnToDevelopment} />
+          <ActionBtn label="↩ Devolver a desarrollo" color="gray" onClick={() => setShowReturnModal(true)} />
         )}
         {canManage && <ActionBtn label="Eliminar" color="red" onClick={handleDelete} />}
       </div>
@@ -439,6 +480,13 @@ function RequestCard({ req, user, users, onRefresh }) {
       {modal === 'detail' && <DetailModal request={req} history={history} worklogs={worklogs} onClose={() => setModal(null)} user={user} />}
       {showEvidence && <EvidenceModal request={req} user={user} onClose={() => setShowEvidence(false)} onSaved={() => { setShowEvidence(false); onRefresh(); }} />}
       {showApprove && <ApprovalModal request={req} user={user} onClose={() => setShowApprove(false)} onSaved={saved} />}
+      {showReturnModal && (
+        <ReturnToDevelopmentModal
+          request={req}
+          onClose={() => setShowReturnModal(false)}
+          onConfirm={handleReturnToDevelopment}
+        />
+      )}
     </div>
   );
 }
