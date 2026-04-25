@@ -469,12 +469,16 @@ export function RejectModal({ request, onClose, onSaved, user }) {
 // ---- DETAIL MODAL ----
 export function DetailModal({ request, history = [], worklogs = [], onClose, user }) {
   const [tab, setTab] = useState('resumen');
+  const normalizeStatus = (s = '') => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  const extractLinks = (text = '') => (text.match(/https?:\/\/[^\s|)]+/g) || []);
+  const evidenceHistory = history.filter(h => normalizeStatus(h?.to_status) === 'en revision');
 
   const tabs = [
     { key: 'resumen', label: 'Resumen' },
     { key: 'chat', label: '💬 Chat' },
     { key: 'comentarios', label: 'Comentarios' },
     { key: 'adjuntos', label: `Adjuntos${request.file_urls?.length ? ` (${request.file_urls.length})` : ''}` },
+    { key: 'evidencias', label: `Evidencias${evidenceHistory.length ? ` (${evidenceHistory.length})` : ''}` },
     { key: 'historial', label: 'Historial' },
     { key: 'worklogs', label: 'Worklogs' },
   ];
@@ -597,6 +601,51 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
 
       {tab === 'adjuntos' && (
         <AttachmentsViewer urls={request.file_urls || []} />
+      )}
+
+      {tab === 'evidencias' && (
+        <div className="space-y-3">
+          {evidenceHistory.length === 0 ? (
+            <p className="text-sm text-gray-500">Sin evidencias registradas en cambios a revisión.</p>
+          ) : evidenceHistory.map((h, i) => {
+            const links = extractLinks(h.note || '');
+            return (
+              <div key={`${h.id || i}-${h.created_date || ''}`} className="rounded-lg p-3" style={{ background: 'hsl(222,47%,17%)', border: '1px solid hsl(217,33%,22%)' }}>
+                <p className="text-xs text-white font-semibold">Evidencia #{evidenceHistory.length - i}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: 'hsl(215,20%,55%)' }}>
+                  {h.by_user_name || 'Sistema'} · {h.created_date ? new Date(h.created_date).toLocaleString('es') : '—'}
+                </p>
+                {h.note && (
+                  <p className="text-sm mt-2 whitespace-pre-wrap break-words" style={{ color: 'hsl(215,20%,80%)' }}>
+                    {h.note}
+                  </p>
+                )}
+                {links.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {links.map((link, idx) => (
+                      <a
+                        key={`${link}-${idx}`}
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-xs break-all underline text-blue-300 hover:text-blue-200"
+                      >
+                        {link}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="rounded-lg p-3" style={{ background: 'hsl(222,47%,17%)', border: '1px solid hsl(217,33%,22%)' }}>
+            <p className="text-xs font-medium mb-2" style={{ color: 'hsl(215,20%,65%)' }}>
+              Archivos de evidencia adjuntos
+            </p>
+            <AttachmentsViewer urls={request.file_urls || []} />
+          </div>
+        </div>
       )}
 
       {tab === 'worklogs' && (
