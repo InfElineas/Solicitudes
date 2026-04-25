@@ -277,6 +277,43 @@ function RequestCard({ req, user, users, onRefresh }) {
     }
   };
 
+  const handleReturnToDevelopment = async () => {
+    if (req.status !== 'En revisión') return;
+    const reason = window.prompt('Indica qué debe ajustarse antes de continuar:');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast.error('Debes indicar un motivo para devolver a desarrollo.');
+      return;
+    }
+    try {
+      await base44.entities.Request.update(req.id, { status: 'En progreso' });
+      await base44.entities.RequestHistory.create({
+        request_id: req.id,
+        from_status: 'En revisión',
+        to_status: 'En progreso',
+        note: `Devuelta a desarrollo: ${reason.trim()}`,
+        by_user_id: user?.email,
+        by_user_name: user?.full_name || user?.email,
+      });
+      if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
+        await base44.entities.Notification.create({
+          user_id: req.assigned_to_id,
+          type: 'status_change',
+          title: '↩️ Solicitud devuelta a desarrollo',
+          message: `La solicitud "${req.title}" fue devuelta a En progreso. Motivo: ${reason.trim()}`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      }
+      toast.success('Solicitud devuelta a desarrollo');
+      onRefresh();
+    } catch (err) {
+      console.error('[handleReturnToDevelopment]', err);
+      toast.error('No se pudo devolver la solicitud a desarrollo.');
+    }
+  };
+
   const handleDelete = async () => {
     if (!window.confirm('¿Mover esta solicitud a la papelera?')) return;
     try {
@@ -305,6 +342,7 @@ function RequestCard({ req, user, users, onRefresh }) {
   const [showApprove, setShowApprove] = useState(false);
   const isPendingApproval = req.status === 'Pendiente aprobación';
   const canApproveRequests = role === 'admin';
+  const canReturnToDevelopment = req.status === 'En revisión' && (isRequester || role === 'admin');
 
   return (
     <div className="rounded-xl p-4 flex flex-col gap-2" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,20%)' }}>
@@ -375,6 +413,9 @@ function RequestCard({ req, user, users, onRefresh }) {
         {/* Only admin/superadmin can finalize — tech (support) can only send to review */}
         {(role === 'admin') && req.status === 'En revisión' && (
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
+        )}
+        {canReturnToDevelopment && (
+          <ActionBtn label="↩ Devolver a desarrollo" color="gray" onClick={handleReturnToDevelopment} />
         )}
         {(role === 'admin') && !isFinalized && !isPendingApproval && (
           <ActionBtn label="Rechazar" color="red" onClick={() => setModal('reject')} />

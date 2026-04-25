@@ -202,6 +202,16 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
     const req = requests.find(r => r.id === draggableId);
     if (!req) return;
 
+    // Return to development from review is restricted to requester or admin.
+    if (oldStatus === 'En revisión' && newStatus === 'En progreso') {
+      const isRequester = req.requester_id === user?.email;
+      const isAdmin = role === 'admin';
+      if (!isRequester && !isAdmin) {
+        toast.error('Solo el solicitante o administración puede devolver a desarrollo');
+        return;
+      }
+    }
+
     // Require evidence when moving to En revisión
     if (newStatus === 'En revisión') {
       setPendingEvidenceReq(req);
