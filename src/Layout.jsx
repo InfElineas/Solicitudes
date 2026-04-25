@@ -11,7 +11,7 @@ import UserProfileModal from '@/components/profile/UserProfileModal';
 import MobileBottomNav from '@/components/MobileBottomNav';
 
 const NAV = [
-  { name: 'Solicitudes',           path: '/Requests',        icon: FileText,    roles: ['admin', 'support', 'employee', 'jefe'] },
+  { name: 'Solicitudes',           path: '/Requests',        icon: FileText,    roles: ['admin', 'support', 'jefe'] },
   { name: 'Mi historial',          path: '/UserHistory',     icon: FileText,    roles: ['employee'] },
   { name: 'Incidencias',           path: '/Incidents',       icon: AlertTriangle, roles: ['admin', 'support', 'employee'] },
   { name: 'Dashboard & Análisis',  path: '/Analysis',        icon: BarChart2,   roles: ['admin', 'support'] },

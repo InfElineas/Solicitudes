@@ -427,6 +427,7 @@ export default function Requests() {
   });
 
   const role = user?.role || 'employee';
+  const canCreateRequests = role === 'jefe';
 
   const filtered = useMemo(() => {
     let r = requests;
@@ -503,15 +504,25 @@ export default function Requests() {
             </button>
           </div>
           <ExportButton requests={filtered} />
-          <button
-            onClick={() => setShowNew(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
-            style={{ background: 'hsl(217,91%,45%)' }}
-          >
-            <Plus className="w-4 h-4" /><span className="hidden sm:inline">Nueva Solicitud</span><span className="sm:hidden">Nueva</span>
-          </button>
+          {canCreateRequests && (
+            <button
+              onClick={() => setShowNew(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
+              style={{ background: 'hsl(217,91%,45%)' }}
+            >
+              <Plus className="w-4 h-4" /><span className="hidden sm:inline">Nueva Solicitud</span><span className="sm:hidden">Nueva</span>
+            </button>
+          )}
         </div>
       </div>
+      {!canCreateRequests && (
+        <div
+          className="mb-4 rounded-lg px-3 py-2 text-xs"
+          style={{ background: 'hsl(38,80%,14%)', border: '1px solid hsl(38,80%,25%)', color: '#fbbf24' }}
+        >
+          Solo jefatura de departamento puede crear solicitudes. Si tienes rol empleado, utiliza el módulo de Incidencias.
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="relative mt-4 mb-2">
@@ -602,7 +613,7 @@ export default function Requests() {
       </div>
 
       {/* New Request Modal */}
-      {showNew && (
+      {showNew && canCreateRequests && (
         <RequestFormModal
           departments={departments}
           onClose={() => setShowNew(false)}
