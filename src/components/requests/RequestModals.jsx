@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import CommentsSection from './CommentsSection';
 import ChatSection from './ChatSection';
-import EvidenceModal from './EvidenceModal';
 import FileAttachmentPicker from './FileAttachmentPicker';
 import AttachmentsViewer from './AttachmentsViewer';
-import { sendFinalizadaEmail, sendAssignedCriticalEmail } from '@/services/emailNotifications';
+import { sendAssignedCriticalEmail } from '@/services/emailNotifications';
 
 const inputCls = "w-full px-3 py-2 rounded-lg text-sm text-white outline-none focus:ring-2 focus:ring-blue-500";
 const inputStyle = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' };

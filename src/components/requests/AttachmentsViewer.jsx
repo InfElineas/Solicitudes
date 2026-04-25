@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, ImageIcon, Download } from 'lucide-react';
+import { FileText, Download } from 'lucide-react';
 
 function isImage(url) { return /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url || ''); }
 function fileName(url) { return decodeURIComponent(url.split('/').pop().split('?')[0]) || 'archivo'; }
