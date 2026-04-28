@@ -74,17 +74,25 @@ function ReportForm({ user, activos, kbArticles, onClose, onSaved }) {
 
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files);
+    if (!files.length) return;
     const pending = files.map(f => ({ name: f.name, uploading: true, url: null }));
     setAttachments(prev => [...prev, ...pending]);
     for (const f of files) {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
-      setAttachments(prev => {
-        const updated = [...prev];
-        const idx = updated.findIndex(x => x.name === f.name && x.uploading);
-        if (idx !== -1) updated[idx] = { name: f.name, url: file_url, uploading: false };
-        return updated;
-      });
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
+        setAttachments(prev => {
+          const updated = [...prev];
+          const idx = updated.findIndex(x => x.name === f.name && x.uploading);
+          if (idx !== -1) updated[idx] = { name: f.name, url: file_url, uploading: false };
+          return updated;
+        });
+      } catch (err) {
+        console.error('[Incidents] UploadFile error:', err);
+        toast.error(`Error al subir "${f.name}". Verifica tu conexión e inténtalo de nuevo.`);
+        setAttachments(prev => prev.filter(x => !(x.name === f.name && x.uploading)));
+      }
     }
+    e.target.value = '';
   };
 
   const handleSubmit = async (e) => {

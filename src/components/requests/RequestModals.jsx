@@ -77,13 +77,19 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
     const newEntries = pickedFiles.map(f => ({ name: f.name, url: null, uploading: true }));
     setAttachments(prev => [...prev, ...newEntries]);
     for (const f of pickedFiles) {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
-      setAttachments(prev => {
-        const updated = [...prev];
-        const idx = updated.findIndex(x => x.name === f.name && x.uploading);
-        if (idx !== -1) updated[idx] = { name: f.name, url: file_url, uploading: false };
-        return updated;
-      });
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
+        setAttachments(prev => {
+          const updated = [...prev];
+          const idx = updated.findIndex(x => x.name === f.name && x.uploading);
+          if (idx !== -1) updated[idx] = { name: f.name, url: file_url, uploading: false };
+          return updated;
+        });
+      } catch (err) {
+        console.error('[RequestFormModal] UploadFile error:', err);
+        toast.error(`Error al subir "${f.name}". Verifica tu conexión e inténtalo de nuevo.`);
+        setAttachments(prev => prev.filter(x => !(x.name === f.name && x.uploading)));
+      }
     }
   };
 

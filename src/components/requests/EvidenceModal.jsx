@@ -22,17 +22,25 @@ export default function EvidenceModal({ request, user, onClose, onSaved }) {
 
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files);
-    const pending = files.map(f => ({ name: f.name, uploading: true, url: null }));
+    if (!files.length) return;
+    const pending = files.map(f => ({ name: f.name, uploading: true, url: null, error: false }));
     setAttachments(prev => [...prev, ...pending]);
     for (const f of files) {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
-      setAttachments(prev => {
-        const updated = [...prev];
-        const idx = updated.findIndex(x => x.name === f.name && x.uploading);
-        if (idx !== -1) updated[idx] = { name: f.name, url: file_url, uploading: false };
-        return updated;
-      });
+      try {
+        const { file_url } = await base44.integrations.Core.UploadFile({ file: f });
+        setAttachments(prev => {
+          const updated = [...prev];
+          const idx = updated.findIndex(x => x.name === f.name && x.uploading);
+          if (idx !== -1) updated[idx] = { name: f.name, url: file_url, uploading: false, error: false };
+          return updated;
+        });
+      } catch (err) {
+        console.error('[EvidenceModal] UploadFile error:', err);
+        toast.error(`Error al subir "${f.name}". Verifica tu conexión e inténtalo de nuevo.`);
+        setAttachments(prev => prev.filter(x => !(x.name === f.name && x.uploading)));
+      }
     }
+    e.target.value = '';
   };
 
   const hasEvidence = notes.trim().length > 0 || link.trim().length > 0 || attachments.some(a => a.url);
