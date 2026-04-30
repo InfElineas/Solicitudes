@@ -46,7 +46,6 @@ function ReportForm({ user, activos, kbArticles, onClose, onSaved }) {
     tool_name: '', category: '', description: '', impact: '',
     reporter_name: user?.full_name || '', reporter_email: user?.email || '',
     department: user?.department || '',
-    activo_id: '', activo_nombre: '',
   });
   const [showSuggestion, setShowSuggestion] = useState(null);
 
@@ -172,18 +171,6 @@ function ReportForm({ user, activos, kbArticles, onClose, onSaved }) {
               <input required value={form.tool_name} onChange={e => set('tool_name', e.target.value)}
                 placeholder="Ej: Excel, SAP, Impresora HP..."
                 className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: muted }}>Activo del inventario (opcional)</label>
-              <select value={form.activo_id} onChange={e => {
-                const a = activos.find(x => x.id === e.target.value);
-                set('activo_id', e.target.value);
-                set('activo_nombre', a?.nombre || '');
-                if (a) set('tool_name', a.nombre);
-              }} className="w-full px-3 py-2 rounded-lg text-sm cursor-pointer" style={inputStyle}>
-                <option value="">Seleccionar activo...</option>
-                {activos.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-              </select>
             </div>
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: muted }}>Categoría *</label>
