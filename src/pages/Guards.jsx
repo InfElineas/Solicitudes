@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Plus, Clock, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User } from 'lucide-react';
+import { Shield, Plus, Clock, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User, Trash2, ArrowUpDown } from 'lucide-react';
 import MonthlyPlanner from '../components/guards/MonthlyPlanner';
 import { toast } from 'sonner';
 
@@ -286,6 +286,8 @@ export default function Guards() {
   const [editGuardia, setEditGuardia] = useState(null);
   const [replaceGuardia, setReplaceGuardia] = useState(null);
   const [showPast, setShowPast]       = useState(false);
+  const [selected, setSelected]       = useState(new Set());
+  const [sortDir, setSortDir]         = useState('desc');
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
@@ -349,6 +351,33 @@ export default function Guards() {
     [active, user]
   );
 
+  const toggleSelect = (id) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const selectSection = (ids) => setSelected(prev => {
+    const next = new Set(prev);
+    const allIn = ids.every(id => next.has(id));
+    if (allIn) ids.forEach(id => next.delete(id));
+    else ids.forEach(id => next.add(id));
+    return next;
+  });
+
+  const sortFn = (arr) => [...arr].sort((a, b) => {
+    const d = new Date(a.inicio) - new Date(b.inicio);
+    return sortDir === 'desc' ? -d : d;
+  });
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`¿Eliminar permanentemente ${selected.size} guardia(s) seleccionada(s)?`)) return;
+    await Promise.all([...selected].map(id => base44.entities.Guardia.delete(id)));
+    toast.success(`${selected.size} guardia(s) eliminadas`);
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ['guardias'] });
+  };
+
   const handleCancel = async (g) => {
     if (!window.confirm('¿Cancelar esta guardia?')) return;
     await base44.entities.Guardia.update(g.id, { estado: 'cancelada' });
@@ -371,6 +400,14 @@ export default function Guards() {
     return (
       <div className="rounded-xl p-4" style={{ ...cardStyle, border: onDuty ? '1px solid hsl(142,60%,28%)' : cardStyle.border }}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
+          {canManage && (
+            <input type="checkbox" checked={selected.has(g.id)}
+              onChange={() => toggleSelect(g.id)}
+              onClick={e => e.stopPropagation()}
+              className="mt-1 cursor-pointer shrink-0"
+              style={{ accentColor: '#3b82f6', width: '14px', height: '14px' }}
+            />
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <User className="w-3.5 h-3.5 shrink-0" style={{ color: onDuty ? '#4ade80' : muted }} />
@@ -443,21 +480,51 @@ export default function Guards() {
             El técnico de guardia recibe incidencias automáticamente según su horario
           </p>
         </div>
-        {canManage && (
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90"
+            style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
+            <ArrowUpDown className="w-4 h-4" />
+            {sortDir === 'desc' ? 'Más reciente primero' : 'Más antigua primero'}
+          </button>
+          {canManage && (
+            <>
+              <button onClick={() => setShowPlanner(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90"
+                style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
+                <Calendar className="w-4 h-4" /> Planificar mes
+              </button>
+              <button onClick={() => setShowForm(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
+                style={{ background: 'hsl(217,91%,45%)' }}>
+                <Plus className="w-4 h-4" /> Nueva guardia
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Barra de selección masiva ── */}
+      {canManage && selected.size > 0 && (
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-xl flex-wrap gap-2"
+          style={{ background: 'hsl(217,60%,14%)', border: '1px solid hsl(217,60%,28%)' }}>
+          <span className="text-sm font-medium" style={{ color: '#60a5fa' }}>
+            {selected.size} guardia(s) seleccionada(s)
+          </span>
           <div className="flex gap-2">
-            <button onClick={() => setShowPlanner(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90"
-              style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
-              <Calendar className="w-4 h-4" /> Planificar mes
+            <button onClick={() => setSelected(new Set())}
+              className="text-xs px-3 py-1.5 rounded-lg hover:bg-white/10"
+              style={{ color: 'hsl(215,20%,65%)' }}>
+              Cancelar selección
             </button>
-            <button onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
-              style={{ background: 'hsl(217,91%,45%)' }}>
-              <Plus className="w-4 h-4" /> Nueva guardia
+            <button onClick={handleBulkDelete}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium hover:opacity-90"
+              style={{ background: 'hsl(0,50%,20%)', color: '#f87171' }}>
+              <Trash2 className="w-3.5 h-3.5" /> Eliminar {selected.size}
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Banner: estado actual ── */}
       {activeGuardia ? (
@@ -530,23 +597,39 @@ export default function Guards() {
           {/* Activas ahora */}
           {active.length > 0 && (
             <section>
-              <h2 className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5"
+              <h2 className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2"
                 style={{ color: '#4ade80' }}>
+                {canManage && (
+                  <input type="checkbox"
+                    checked={active.every(g => selected.has(g.id))}
+                    onChange={() => selectSection(active.map(g => g.id))}
+                    className="cursor-pointer"
+                    style={{ accentColor: '#3b82f6', width: '13px', height: '13px' }}
+                  />
+                )}
                 <span className="w-2 h-2 rounded-full bg-green-400 inline-block animate-pulse" />
                 En turno ahora ({active.length})
               </h2>
-              <div className="space-y-2">{active.map(g => <GuardiaCard key={g.id} g={g} />)}</div>
+              <div className="space-y-2">{sortFn(active).map(g => <GuardiaCard key={g.id} g={g} />)}</div>
             </section>
           )}
 
           {/* Próximas */}
           {upcoming.length > 0 && (
             <section>
-              <h2 className="text-xs font-semibold uppercase tracking-wider mb-2"
+              <h2 className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2"
                 style={{ color: '#60a5fa' }}>
+                {canManage && (
+                  <input type="checkbox"
+                    checked={upcoming.every(g => selected.has(g.id))}
+                    onChange={() => selectSection(upcoming.map(g => g.id))}
+                    className="cursor-pointer"
+                    style={{ accentColor: '#3b82f6', width: '13px', height: '13px' }}
+                  />
+                )}
                 Próximas guardias ({upcoming.length})
               </h2>
-              <div className="space-y-2">{upcoming.map(g => <GuardiaCard key={g.id} g={g} />)}</div>
+              <div className="space-y-2">{sortFn(upcoming).map(g => <GuardiaCard key={g.id} g={g} />)}</div>
             </section>
           )}
 
@@ -562,14 +645,24 @@ export default function Guards() {
           {/* Historial (colapsable) */}
           {past.length > 0 && (
             <section>
-              <button onClick={() => setShowPast(p => !p)}
-                className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 hover:opacity-80"
-                style={{ color: muted }}>
-                <span>{showPast ? '▾' : '▸'} Historial ({past.length})</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {canManage && showPast && (
+                  <input type="checkbox"
+                    checked={past.every(g => selected.has(g.id))}
+                    onChange={() => selectSection(past.map(g => g.id))}
+                    className="cursor-pointer"
+                    style={{ accentColor: '#3b82f6', width: '13px', height: '13px' }}
+                  />
+                )}
+                <button onClick={() => setShowPast(p => !p)}
+                  className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 hover:opacity-80"
+                  style={{ color: muted }}>
+                  <span>{showPast ? '▾' : '▸'} Historial ({past.length})</span>
+                </button>
+              </div>
               {showPast && (
                 <div className="space-y-2 mt-2">
-                  {past.map(g => <GuardiaCard key={g.id} g={g} />)}
+                  {sortFn(past).map(g => <GuardiaCard key={g.id} g={g} />)}
                 </div>
               )}
             </section>
