@@ -5,7 +5,7 @@ import CommentsSection from './CommentsSection';
 import ChatSection from './ChatSection';
 import FileAttachmentPicker from './FileAttachmentPicker';
 import AttachmentsViewer from './AttachmentsViewer';
-import { sendAssignedCriticalEmail } from '@/services/emailNotifications';
+import { sendAssignedEmail, sendRejectedEmail } from '@/services/emailNotifications';
 
 const inputCls = "w-full px-3 py-2 rounded-lg text-sm text-white outline-none focus:ring-2 focus:ring-blue-500";
 const inputStyle = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' };
@@ -361,7 +361,7 @@ export function AssignModal({ request, users = [], onClose, onSaved }) {
           request_title: request.title,
           is_read: false,
         });
-        await sendAssignedCriticalEmail(updatedRequest, techId, tech?.full_name || techId);
+        await sendAssignedEmail(updatedRequest, techId, tech?.full_name || techId);
       }
       if (isReassign && request.assigned_to_id && request.assigned_to_id !== techId) {
         await base44.entities.Notification.create({
@@ -445,6 +445,7 @@ export function RejectModal({ request, onClose, onSaved, user }) {
           request_title: request.title,
           is_read: false,
         });
+        sendRejectedEmail(request, reason);
       }
       onSaved();
     } catch (err) {

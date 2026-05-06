@@ -198,10 +198,12 @@ export const integrations = {
     },
 
     async SendEmail({ to, subject, body }) {
-      // Stub: log email in development.
-      // In production connect to Supabase Edge Function or an email provider.
-      console.info('[SendEmail] To:', to, '| Subject:', subject);
-      console.debug('[SendEmail] Body:', body);
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: { to, subject, body },
+      });
+      if (error) {
+        console.error('[SendEmail] Edge function error:', error.message ?? error);
+      }
     },
   },
 };
