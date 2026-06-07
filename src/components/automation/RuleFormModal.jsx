@@ -7,8 +7,8 @@ const inputStyle = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,
 const selectCls = inputCls + " cursor-pointer";
 const labelCls = "text-xs font-medium text-gray-300 mb-1 block";
 
-const STATUSES = ['Pendiente', 'En progreso', 'En revisión', 'Finalizada', 'Rechazada'];
-const PRIORITIES = ['Alta', 'Media', 'Baja'];
+const STATUSES = ['Pendiente', 'En Proceso', 'En Espera', 'Requiere Información', 'En Validación', 'Finalizado', 'Retrasado', 'Cancelado', 'Rechazado'];
+const PRIORITIES = ['P1 — Crítica', 'P2 — Alta', 'P3 — Media', 'P4 — Baja'];
 
 export default function RuleFormModal({ rule, onClose, onSaved }) {
   const isEdit = !!rule;
@@ -25,8 +25,8 @@ export default function RuleFormModal({ rule, onClose, onSaved }) {
     email_to: rule?.action_config?.email_to || '',
     notify_user: rule?.action_config?.notify_user || 'assignee',
     message: rule?.action_config?.message || '',
-    new_priority: rule?.action_config?.new_priority || 'Alta',
-    new_status: rule?.action_config?.new_status || 'En progreso',
+    new_priority: rule?.action_config?.new_priority || 'P2 — Alta',
+    new_status: rule?.action_config?.new_status || 'En Proceso',
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));

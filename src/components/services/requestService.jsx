@@ -1,12 +1,16 @@
 import { base44 } from '@/api/base44Client';
 
-// Valid status transitions
+// Transiciones válidas — Protocolo Operativo v1.0
 const VALID_TRANSITIONS = {
-  'Pendiente': ['En progreso', 'Rechazada'],
-  'En progreso': ['En revisión'],
-  'En revisión': ['Finalizada', 'En progreso'],
-  'Finalizada': [],
-  'Rechazada': [],
+  'Pendiente':            ['En Proceso', 'Rechazado', 'Cancelado'],
+  'En Proceso':           ['En Espera', 'Requiere Información', 'En Validación', 'Retrasado', 'Cancelado'],
+  'En Espera':            ['En Proceso', 'Cancelado'],
+  'Requiere Información': ['En Proceso', 'Cancelado'],
+  'En Validación':        ['Finalizado', 'En Proceso'],
+  'Retrasado':            ['En Proceso', 'Cancelado'],
+  'Finalizado':           [],
+  'Cancelado':            [],
+  'Rechazado':            [],
 };
 
 export function getValidTransitions(currentStatus) {
@@ -24,7 +28,7 @@ export async function transitionRequestStatus(request, newStatus, note, user) {
 
   const updateData = { status: newStatus, updated_date: new Date().toISOString() };
 
-  if (newStatus === 'Finalizada') {
+  if (newStatus === 'Finalizado') {
     updateData.completion_date = new Date().toISOString();
   }
 

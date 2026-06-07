@@ -62,7 +62,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
     level: request?.level || '',
     estimated_hours: request?.estimated_hours ? String(request.estimated_hours) : '',
     estimated_due: request?.estimated_due ? request.estimated_due.slice(0, 16) : '',
-    priority: request?.priority || 'Media',
+    priority: request?.priority || 'P3 — Media',
     department_ids: request?.department_ids || [],
     department_names: request?.department_names || [],
   });
@@ -144,7 +144,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
       } else {
         await base44.entities.Request.create({
           ...payload,
-          status: 'Pendiente aprobación',
+          status: 'Pendiente',
           is_deleted: false,
           requester_id: user?.email,
           requester_name: user?.full_name || user?.email,
@@ -158,9 +158,34 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
     }
   };
 
-  const REQUEST_TYPES = ['Desarrollo', 'Corrección de errores', 'Mejora funcional', 'Mejora visual', 'Migración', 'Automatización'];
-  const PRIORITIES = ['Alta', 'Media', 'Baja'];
+  // Protocolo Operativo v1.0
+  const REQUEST_TYPES = ['Nueva Implementación', 'Reparación / Bug', 'Mantenimiento', 'Actualización', 'Consulta o Asesoría', 'Integración', 'Optimización', 'Capacitación', 'Reporte o Análisis', 'Soporte Técnico', 'Automatización'];
+  const PRIORITIES = ['P1 — Crítica', 'P2 — Alta', 'P3 — Media', 'P4 — Baja'];
   const LEVELS = ['Fácil', 'Medio', 'Difícil'];
+
+  // Consideración y prioridad sugerida por tipo (Regla 1)
+  const TYPE_CONFIG = {
+    'Nueva Implementación': { priority: 'P2 — Alta',    hint: 'Requiere análisis previo y estimación de tiempo' },
+    'Reparación / Bug':     { priority: 'P1 — Crítica', hint: 'Prioridad según impacto operativo' },
+    'Mantenimiento':        { priority: 'P4 — Baja',    hint: 'Se programará en ventana de bajo impacto' },
+    'Actualización':        { priority: 'P3 — Media',   hint: 'Se validará con el solicitante antes de implementar' },
+    'Consulta o Asesoría':  { priority: 'P4 — Baja',    hint: 'Se responderá en ≤ 24h' },
+    'Integración':          { priority: 'P2 — Alta',    hint: 'Requiere análisis de arquitectura previo' },
+    'Optimización':         { priority: 'P3 — Media',   hint: 'Se medirá el estado antes y después' },
+    'Capacitación':         { priority: 'P4 — Baja',    hint: 'Se coordinará con el área solicitante' },
+    'Reporte o Análisis':   { priority: 'P3 — Media',   hint: 'Se definirá el formato de entrega' },
+    'Soporte Técnico':      { priority: 'P3 — Media',   hint: 'Se clasificará en subtipo al atender el contacto' },
+    'Automatización':       { priority: 'P2 — Alta',    hint: 'Se documentará el flujo antes de implementar' },
+  };
+
+  const handleTypeChange = (type) => {
+    set('request_type', type);
+    if (TYPE_CONFIG[type] && !isEdit) {
+      set('priority', TYPE_CONFIG[type].priority);
+    }
+  };
+
+  const typeHint = TYPE_CONFIG[form.request_type]?.hint;
 
   return (
     <ModalWrapper title={isEdit ? 'Editar Solicitud' : 'Nueva Solicitud'} subtitle={isEdit ? 'Modifica los campos y guarda los cambios.' : 'Completa el formulario para crear la solicitud.'} onClose={onClose} wide>
@@ -174,12 +199,17 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
           <textarea value={form.description} onChange={e => set('description', e.target.value)} required rows={3} className={inputCls + ' resize-none'} style={inputStyle} placeholder="Describe la solicitud..." />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelCls}>Tipo de solicitud</label>
-            <select value={form.request_type} onChange={e => set('request_type', e.target.value)} className={selectCls} style={inputStyle}>
+          <div className="col-span-2">
+            <label className={labelCls}>Tipo de solicitud *</label>
+            <select value={form.request_type} onChange={e => handleTypeChange(e.target.value)} required className={selectCls} style={inputStyle}>
               <option value="">Seleccionar...</option>
               {REQUEST_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
+            {typeHint && (
+              <p className="text-xs mt-1 px-1" style={{ color: 'hsl(38,90%,60%)' }}>
+                ℹ️ {typeHint}
+              </p>
+            )}
           </div>
           <div>
             <label className={labelCls}>Dificultad</label>
@@ -243,7 +273,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
 // ---- CLASSIFY MODAL ----
 export function ClassifyModal({ request, onClose, onSaved, user }) {
   const [level, setLevel] = useState(request?.level || '');
-  const [priority, setPriority] = useState(request?.priority || 'Alta');
+  const [priority, setPriority] = useState(request?.priority || 'P3 — Media');
   const [saving, setSaving] = useState(false);
   const isReclassify = !!(request?.level || request?.priority);
 
@@ -424,13 +454,13 @@ export function RejectModal({ request, onClose, onSaved, user }) {
     setSaving(true);
     try {
       await base44.entities.Request.update(request.id, {
-        status: 'Rechazada',
+        status: 'Rechazado',
         rejection_reason: reason,
       });
       await base44.entities.RequestHistory.create({
         request_id: request.id,
         from_status: request.status,
-        to_status: 'Rechazada',
+        to_status: 'Rechazado',
         note: reason,
         by_user_id: user?.email,
         by_user_name: user?.full_name || user?.email,
@@ -678,17 +708,26 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
 
 // -- helpers --
 function PriorityPill({ p }) {
-  const cfg = { Alta: 'bg-red-500/20 text-red-400', Media: 'bg-yellow-500/20 text-yellow-400', Baja: 'bg-green-500/20 text-green-400' };
-  return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${cfg[p] || ''}`}>{p}</span>;
+  const cfg = {
+    'P1 — Crítica': 'bg-rose-900/30 text-rose-300',
+    'P2 — Alta':    'bg-orange-500/20 text-orange-400',
+    'P3 — Media':   'bg-yellow-500/20 text-yellow-400',
+    'P4 — Baja':    'bg-green-500/20 text-green-400',
+  };
+  return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${cfg[p] || 'bg-gray-500/20 text-gray-400'}`}>{p}</span>;
 }
 
 function StatusPill({ s }) {
   const cfg = {
-    'Pendiente': 'bg-yellow-500/20 text-yellow-400',
-    'En progreso': 'bg-blue-500/20 text-blue-400',
-    'En revisión': 'bg-purple-500/20 text-purple-400',
-    'Finalizada': 'bg-green-500/20 text-green-400',
-    'Rechazada': 'bg-red-500/20 text-red-400',
+    'Pendiente':            'bg-gray-500/20 text-gray-400',
+    'En Proceso':           'bg-blue-500/20 text-blue-400',
+    'En Espera':            'bg-amber-500/20 text-amber-400',
+    'Requiere Información': 'bg-orange-500/20 text-orange-400',
+    'En Validación':        'bg-purple-500/20 text-purple-400',
+    'Finalizado':           'bg-green-500/20 text-green-400',
+    'Retrasado':            'bg-red-500/20 text-red-400',
+    'Cancelado':            'bg-gray-700/20 text-gray-500',
+    'Rechazado':            'bg-rose-900/20 text-rose-400',
   };
   return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${cfg[s] || ''}`}>{s}</span>;
 }

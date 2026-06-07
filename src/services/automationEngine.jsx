@@ -30,7 +30,7 @@ function matchesTrigger(req, trigger) {
   const now = Date.now();
   const updatedAt = req.updated_date ? new Date(req.updated_date).getTime() : new Date(req.created_date).getTime();
   const dueDateMs = req.estimated_due ? new Date(req.estimated_due).getTime() : null;
-  const isOpen = req.status !== 'Finalizada' && req.status !== 'Rechazada';
+  const isOpen = !['Finalizado', 'Rechazado', 'Cancelado'].includes(req.status);
 
   if (!isOpen) return false;
 
@@ -44,7 +44,7 @@ function matchesTrigger(req, trigger) {
     case 'due_soon_48h':
       return dueDateMs && dueDateMs > now && (dueDateMs - now) <= 48 * 3600 * 1000;
     case 'high_priority_unassigned':
-      return req.priority === 'Alta' && !req.assigned_to_id;
+      return (req.priority === 'P1 — Crítica' || req.priority === 'P2 — Alta') && !req.assigned_to_id;
     default:
       return false;
   }
@@ -79,9 +79,9 @@ async function executeAction(rule, req, user) {
     }
 
     case 'escalate_priority': {
-      const priorityOrder = ['Baja', 'Media', 'Alta'];
+      const priorityOrder = ['P4 — Baja', 'P3 — Media', 'P2 — Alta', 'P1 — Crítica'];
       const currentIdx = priorityOrder.indexOf(req.priority);
-      const newPriority = currentIdx < 2 ? priorityOrder[currentIdx + 1] : req.priority;
+      const newPriority = currentIdx >= 0 && currentIdx < 3 ? priorityOrder[currentIdx + 1] : req.priority;
       if (newPriority !== req.priority) {
         await base44.entities.Request.update(req.id, { priority: newPriority });
         return `Prioridad escalada de ${req.priority} a ${newPriority}`;
@@ -138,7 +138,7 @@ export async function runAutomationEngine(user) {
     base44.entities.Request.filter({ is_deleted: false }, '-updated_date', 500),
   ]);
 
-  const openRequests = requests.filter(r => r.status !== 'Finalizada' && r.status !== 'Rechazada');
+  const openRequests = requests.filter(r => !['Finalizado', 'Rechazado', 'Cancelado'].includes(r.status));
 
   let actions = 0;
   let errors = 0;

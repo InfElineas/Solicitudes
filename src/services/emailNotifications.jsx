@@ -55,10 +55,10 @@ export async function sendFinalizadaEmail(request) {
 export async function sendAssignedEmail(request, techEmail, techName) {
   if (!techEmail) return;
 
-  const isCritical = request.priority === 'Alta';
-  const accentColor = isCritical ? '#f87171' : '#60a5fa';
-  const emoji       = isCritical ? '🚨' : '📋';
-  const label       = isCritical ? 'prioridad Alta' : `prioridad ${request.priority || 'Normal'}`;
+  const isCritical = request.priority === 'P1 — Crítica' || request.priority === 'P2 — Alta';
+  const accentColor = request.priority === 'P1 — Crítica' ? '#fb7185' : isCritical ? '#fb923c' : '#60a5fa';
+  const emoji       = request.priority === 'P1 — Crítica' ? '🚨' : isCritical ? '⚠️' : '📋';
+  const label       = `prioridad ${request.priority || 'Normal'}`;
 
   const body = `
 <h2 style="font-size:18px;font-weight:700;color:${accentColor};margin:0 0 8px;">${emoji} Solicitud asignada a ti</h2>

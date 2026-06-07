@@ -33,7 +33,7 @@ export default function ScheduledReportModal({ onClose, stats, techProductivity,
           ${[
             ['Total', stats.total, '#3b82f6'],
             ['Finalizadas', stats.finalizada, '#22c55e'],
-            ['En progreso', stats.enProgreso, '#f59e0b'],
+            ['En Proceso', stats.enProgreso, '#f59e0b'],
             ['Pendientes', stats.pendiente, '#8b5cf6'],
             ['Rechazadas', stats.rechazada, '#ef4444'],
             [`Tasa resolución`, `${stats.resolutionRate}%`, '#06b6d4'],
@@ -58,7 +58,7 @@ export default function ScheduledReportModal({ onClose, stats, techProductivity,
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:24px">
           <thead>
             <tr style="background:#1e3a5f;color:white">
-              ${['Técnico','Asignadas','Finalizadas','En progreso','Prom. horas'].map(h => `<th style="padding:8px 10px;text-align:left">${h}</th>`).join('')}
+              ${['Técnico','Asignadas','Finalizadas','En Proceso','Prom. horas'].map(h => `<th style="padding:8px 10px;text-align:left">${h}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
@@ -67,7 +67,7 @@ export default function ScheduledReportModal({ onClose, stats, techProductivity,
                 <td style="padding:7px 10px;font-weight:600;color:#1e3a5f">${t.name}</td>
                 <td style="padding:7px 10px">${t.Asignadas}</td>
                 <td style="padding:7px 10px;color:#16a34a;font-weight:600">${t.Finalizadas}</td>
-                <td style="padding:7px 10px;color:#d97706">${t['En progreso']}</td>
+                <td style="padding:7px 10px;color:#d97706">${t['En Proceso']}</td>
                 <td style="padding:7px 10px;color:#9333ea">${t.avgHrs === '—' ? '—' : t.avgHrs + 'h'}</td>
               </tr>
             `).join('')}
@@ -82,7 +82,7 @@ export default function ScheduledReportModal({ onClose, stats, techProductivity,
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
           <thead>
             <tr style="background:#1e3a5f;color:white">
-              ${['Departamento','Total','Finalizadas','En progreso','Pendientes'].map(h => `<th style="padding:8px 10px;text-align:left">${h}</th>`).join('')}
+              ${['Departamento','Total','Finalizadas','En Proceso','Pendientes'].map(h => `<th style="padding:8px 10px;text-align:left">${h}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
@@ -91,7 +91,7 @@ export default function ScheduledReportModal({ onClose, stats, techProductivity,
                 <td style="padding:7px 10px;font-weight:600">${d.name}</td>
                 <td style="padding:7px 10px">${d.total}</td>
                 <td style="padding:7px 10px;color:#16a34a">${d.Finalizadas}</td>
-                <td style="padding:7px 10px;color:#d97706">${d['En progreso']}</td>
+                <td style="padding:7px 10px;color:#d97706">${d['En Proceso']}</td>
                 <td style="padding:7px 10px;color:#7c3aed">${d.Pendientes}</td>
               </tr>
             `).join('')}

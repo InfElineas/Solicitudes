@@ -32,10 +32,11 @@ function exportCSV(requests) {
 function exportPDF(requests) {
   const win = window.open('', '_blank');
   const statColors = {
-    'Pendiente': '#fbbf24', 'En progreso': '#60a5fa',
-    'En revisión': '#c084fc', 'Finalizada': '#4ade80', 'Rechazada': '#f87171',
+    'Pendiente': '#9ca3af', 'En Proceso': '#60a5fa', 'En Espera': '#fbbf24',
+    'Requiere Información': '#fb923c', 'En Validación': '#c084fc',
+    'Finalizado': '#4ade80', 'Retrasado': '#f87171', 'Cancelado': '#6b7280', 'Rechazado': '#fb7185',
   };
-  const priColors = { Alta: '#f87171', Media: '#fbbf24', Baja: '#4ade80' };
+  const priColors = { 'P1 — Crítica': '#fb7185', 'P2 — Alta': '#fb923c', 'P3 — Media': '#fbbf24', 'P4 — Baja': '#4ade80' };
 
   const rows = requests.map(r => `
     <tr>

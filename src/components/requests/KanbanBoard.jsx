@@ -11,27 +11,37 @@ import {
   DetailModal,
 } from './RequestModals';
 
+// Protocolo Operativo v1.0 — 9 estados
 const COLUMNS = [
-  { key: 'Pendiente', label: 'Pendiente', color: '#fbbf24', bg: 'hsl(38,80%,18%)' },
-  { key: 'En progreso', label: 'En progreso', color: '#60a5fa', bg: 'hsl(217,60%,18%)' },
-  { key: 'En revisión', label: 'En revisión', color: '#c084fc', bg: 'hsl(270,60%,20%)' },
-  { key: 'Finalizada', label: 'Finalizada', color: '#4ade80', bg: 'hsl(142,60%,16%)' },
-  { key: 'Rechazada', label: 'Rechazada', color: '#f87171', bg: 'hsl(0,60%,18%)' },
+  { key: 'Pendiente',            label: 'Pendiente',            color: '#9ca3af', bg: 'hsl(220,15%,18%)' },
+  { key: 'En Proceso',           label: 'En Proceso',           color: '#60a5fa', bg: 'hsl(217,60%,18%)' },
+  { key: 'En Espera',            label: 'En Espera',            color: '#fbbf24', bg: 'hsl(38,80%,18%)' },
+  { key: 'Requiere Información', label: 'Requiere Info.',       color: '#fb923c', bg: 'hsl(25,80%,18%)' },
+  { key: 'En Validación',        label: 'En Validación',        color: '#c084fc', bg: 'hsl(270,60%,20%)' },
+  { key: 'Finalizado',           label: 'Finalizado',           color: '#4ade80', bg: 'hsl(142,60%,16%)' },
+  { key: 'Retrasado',            label: 'Retrasado',            color: '#f87171', bg: 'hsl(0,60%,18%)' },
+  { key: 'Cancelado',            label: 'Cancelado',            color: '#6b7280', bg: 'hsl(220,15%,15%)' },
+  { key: 'Rechazado',            label: 'Rechazado',            color: '#fb7185', bg: 'hsl(345,60%,18%)' },
 ];
 
 const PRIORITY_COLORS = {
-  Alta: { bg: 'hsl(0,84%,22%)', text: '#f87171' },
-  Media: { bg: 'hsl(38,80%,20%)', text: '#fbbf24' },
-  Baja: { bg: 'hsl(142,60%,18%)', text: '#4ade80' },
+  'P1 — Crítica': { bg: 'hsl(345,70%,22%)', text: '#fb7185' },
+  'P2 — Alta':    { bg: 'hsl(20,84%,22%)',  text: '#fb923c' },
+  'P3 — Media':   { bg: 'hsl(38,80%,20%)',  text: '#fbbf24' },
+  'P4 — Baja':    { bg: 'hsl(142,60%,18%)', text: '#4ade80' },
 };
 
-// Valid status transitions — En progreso cannot go directly to Finalizada
+// Transiciones válidas — Protocolo Operativo v1.0
 const TRANSITIONS = {
-  Pendiente: ['En progreso', 'Rechazada'],
-  'En progreso': ['En revisión', 'Rechazada'],
-  'En revisión': ['Finalizada', 'En progreso', 'Rechazada'],
-  Finalizada: [],
-  Rechazada: [],
+  'Pendiente':            ['En Proceso', 'Rechazado', 'Cancelado'],
+  'En Proceso':           ['En Espera', 'Requiere Información', 'En Validación', 'Retrasado', 'Cancelado'],
+  'En Espera':            ['En Proceso', 'Cancelado'],
+  'Requiere Información': ['En Proceso', 'Cancelado'],
+  'En Validación':        ['Finalizado', 'En Proceso'],
+  'Retrasado':            ['En Proceso', 'Cancelado'],
+  'Finalizado':           [],
+  'Cancelado':            [],
+  'Rechazado':            [],
 };
 
 function KanbanCard({ req, index, user, users, onRefresh }) {
@@ -40,7 +50,7 @@ function KanbanCard({ req, index, user, users, onRefresh }) {
   const [history, setHistory] = useState([]);
   const [worklogs, setWorklogs] = useState([]);
 
-  const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS.Media;
+  const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS['P3 — Media'];
   const saved = () => { setModal(null); onRefresh(); };
 
   const openDetail = async (e) => {
@@ -144,13 +154,13 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
 
   const performMove = async (req, newStatus, oldStatus) => {
     const extra = {};
-    if (newStatus === 'Finalizada') {
+    if (newStatus === 'Finalizado') {
       extra.completion_date = new Date().toISOString();
       if (req.started_at) {
         extra.actual_hours = parseFloat(((new Date() - new Date(req.started_at)) / 3600000).toFixed(2));
       }
     }
-    if (newStatus === 'En progreso' && !req.started_at) {
+    if (newStatus === 'En Proceso' && !req.started_at) {
       extra.started_at = new Date().toISOString();
     }
     await base44.entities.Request.update(req.id, { status: newStatus, ...extra });
@@ -163,7 +173,7 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
       by_user_name: user?.full_name || user?.email,
     });
     if (req.requester_id && req.requester_id !== user?.email) {
-      const titles = { 'En revisión': '🔍 Tu solicitud está en revisión', 'Finalizada': '✅ Tu solicitud fue finalizada', 'Rechazada': '❌ Tu solicitud fue rechazada', 'En progreso': '🔧 Tu solicitud está en progreso' };
+      const titles = { 'En Validación': '🔍 Tu solicitud está en validación', 'Finalizado': '✅ Tu solicitud fue finalizada', 'Rechazado': '❌ Tu solicitud fue rechazada', 'En Proceso': '🔧 Tu solicitud está en proceso', 'Requiere Información': '⚠️ Tu solicitud requiere información', 'Cancelado': '🚫 Tu solicitud fue cancelada' };
       base44.entities.Notification.create({
         user_id: req.requester_id,
         type: 'status_change',
@@ -174,8 +184,8 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
         is_read: false,
       });
     }
-    if (newStatus === 'Finalizada') {
-      sendFinalizadaEmail({ ...req, status: 'Finalizada', ...extra });
+    if (newStatus === 'Finalizado') {
+      sendFinalizadaEmail({ ...req, status: 'Finalizado', ...extra });
     }
     toast.success(`Solicitud movida a "${newStatus}"`);
     onRefresh();
@@ -201,18 +211,18 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
     const req = requests.find(r => r.id === draggableId);
     if (!req) return;
 
-    // Return to development from review is restricted to requester or admin.
-    if (oldStatus === 'En revisión' && newStatus === 'En progreso') {
+    // Devolver a proceso desde validación: solo solicitante o admin
+    if (oldStatus === 'En Validación' && newStatus === 'En Proceso') {
       const isRequester = req.requester_id === user?.email;
       const isAdmin = role === 'admin';
       if (!isRequester && !isAdmin) {
-        toast.error('Solo el solicitante o administración puede devolver a desarrollo');
+        toast.error('Solo el solicitante o administración puede devolver a En Proceso');
         return;
       }
     }
 
-    // Require evidence when moving to En revisión
-    if (newStatus === 'En revisión') {
+    // Requerir evidencia al mover a En Validación
+    if (newStatus === 'En Validación') {
       setPendingEvidenceReq(req);
       setPendingDest({ newStatus, oldStatus });
       return;

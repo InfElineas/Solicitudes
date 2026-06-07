@@ -6,10 +6,11 @@ const selectCls = "text-xs rounded-lg px-3 py-1.5 cursor-pointer outline-none fo
 const labelCls = "text-[10px] uppercase font-medium mb-1 block";
 const muted = { color: 'hsl(215,20%,45%)' };
 
-const STATUSES = ['Pendiente', 'En progreso', 'En revisión', 'Finalizada', 'Rechazada'];
-const REQUEST_TYPES = ['Desarrollo', 'Corrección de errores', 'Mejora funcional', 'Mejora visual', 'Migración', 'Automatización'];
+// Protocolo Operativo v1.0
+const STATUSES = ['Pendiente', 'En Proceso', 'En Espera', 'Requiere Información', 'En Validación', 'Finalizado', 'Retrasado', 'Cancelado', 'Rechazado'];
+const REQUEST_TYPES = ['Nueva Implementación', 'Reparación / Bug', 'Mantenimiento', 'Actualización', 'Consulta o Asesoría', 'Integración', 'Optimización', 'Capacitación', 'Reporte o Análisis', 'Soporte Técnico', 'Automatización'];
 const LEVELS = ['Fácil', 'Medio', 'Difícil'];
-const PRIORITIES = ['Alta', 'Media', 'Baja'];
+const PRIORITIES = ['P1 — Crítica', 'P2 — Alta', 'P3 — Media', 'P4 — Baja'];
 
 export default function AdvancedFilters({ filters, onFiltersChange, departments = [], users = [], role = 'employee' }) {
   const [expanded, setExpanded] = useState(false);

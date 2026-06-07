@@ -5,9 +5,10 @@ import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import debounce from 'lodash/debounce';
 
-const STATUSES = ['Pendiente', 'En progreso', 'En revisión', 'Finalizada', 'Rechazada'];
-const PRIORITIES = ['Alta', 'Media', 'Baja'];
-const TYPES = ['Soporte', 'Mejora', 'Desarrollo', 'Capacitación'];
+// Protocolo Operativo v1.0
+const STATUSES = ['Pendiente', 'En Proceso', 'En Espera', 'Requiere Información', 'En Validación', 'Finalizado', 'Retrasado', 'Cancelado', 'Rechazado'];
+const PRIORITIES = ['P1 — Crítica', 'P2 — Alta', 'P3 — Media', 'P4 — Baja'];
+const TYPES = ['Nueva Implementación', 'Reparación / Bug', 'Mantenimiento', 'Actualización', 'Consulta o Asesoría', 'Integración', 'Optimización', 'Capacitación', 'Reporte o Análisis', 'Soporte Técnico', 'Automatización'];
 
 export default function RequestFilters({ filters, onFiltersChange, departments = [] }) {
   const [searchInput, setSearchInput] = useState(filters.search || '');

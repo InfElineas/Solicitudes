@@ -50,7 +50,7 @@ export default function Departments() {
 
   // Avg resolution time per dept
   const deptResolution = departments.map(d => {
-    const finished = requests.filter(r => r.department_names?.includes(d.name) && r.status === 'Finalizada' && r.completion_date && r.created_date);
+    const finished = requests.filter(r => r.department_names?.includes(d.name) && r.status === 'Finalizado' && r.completion_date && r.created_date);
     const avg = finished.length
       ? finished.reduce((sum, r) => sum + (new Date(r.completion_date) - new Date(r.created_date)), 0) / finished.length / (1000 * 60 * 60)
       : 0;

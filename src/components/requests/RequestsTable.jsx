@@ -4,16 +4,21 @@ import { DetailModal } from './RequestModals';
 
 const muted = 'hsl(215,20%,55%)';
 const PRIORITY_COLORS = {
-  Alta: { bg: 'hsl(0,84%,22%)', text: '#f87171' },
-  Media: { bg: 'hsl(38,80%,20%)', text: '#fbbf24' },
-  Baja: { bg: 'hsl(142,60%,18%)', text: '#4ade80' },
+  'P1 — Crítica': { bg: 'hsl(345,70%,22%)', text: '#fb7185' },
+  'P2 — Alta':    { bg: 'hsl(20,84%,22%)',  text: '#fb923c' },
+  'P3 — Media':   { bg: 'hsl(38,80%,20%)',  text: '#fbbf24' },
+  'P4 — Baja':    { bg: 'hsl(142,60%,18%)', text: '#4ade80' },
 };
 const STATUS_COLORS = {
-  'Pendiente': '#fbbf24',
-  'En progreso': '#60a5fa',
-  'En revisión': '#c084fc',
-  'Finalizada': '#4ade80',
-  'Rechazada': '#f87171',
+  'Pendiente':            '#9ca3af',
+  'En Proceso':           '#60a5fa',
+  'En Espera':            '#fbbf24',
+  'Requiere Información': '#fb923c',
+  'En Validación':        '#c084fc',
+  'Finalizado':           '#4ade80',
+  'Retrasado':            '#f87171',
+  'Cancelado':            '#6b7280',
+  'Rechazado':            '#fb7185',
 };
 
 export default function RequestsTable({ requests, user, users, onRefresh }) {

@@ -8,8 +8,11 @@ const cardStyle = { background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,3
 const muted = 'hsl(215,20%,55%)';
 
 const STATUS_COLORS = {
-  'Pendiente': '#fbbf24', 'En progreso': '#60a5fa', 'En revisión': '#c084fc',
-  'Finalizada': '#4ade80', 'Rechazada': '#f87171',
+  // Solicitudes — Protocolo v1.0
+  'Pendiente': '#9ca3af', 'En Proceso': '#60a5fa', 'En Espera': '#fbbf24',
+  'Requiere Información': '#fb923c', 'En Validación': '#c084fc',
+  'Finalizado': '#4ade80', 'Retrasado': '#f87171', 'Cancelado': '#6b7280', 'Rechazado': '#fb7185',
+  // Incidencias
   'En atención': '#3b82f6', 'Resuelto': '#4ade80', 'No reproducible': '#94a3b8',
 };
 

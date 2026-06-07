@@ -58,14 +58,14 @@ export default function EvidenceModal({ request, user, onClose, onSaved }) {
     const allUrls = [...(request.file_urls || []), ...readyUrls];
 
     await base44.entities.Request.update(request.id, {
-      status: 'En revisión',
+      status: 'En Validación',
       file_urls: allUrls,
     });
 
     await base44.entities.RequestHistory.create({
       request_id: request.id,
       from_status: request.status,
-      to_status: 'En revisión',
+      to_status: 'En Validación',
       note: evidenceParts.join(' | ') || 'Evidencia adjunta como archivo',
       by_user_id: user?.email,
       by_user_name: user?.full_name || user?.email,

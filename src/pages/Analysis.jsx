@@ -17,13 +17,20 @@ const selectStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217
 const muted = 'hsl(215,20%,55%)';
 const tooltipStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white', fontSize: 11 };
 
-const PRIORITY_COLORS = { Alta: '#f87171', Media: '#fbbf24', Baja: '#4ade80' };
+// Protocolo Operativo v1.0
+const PRIORITY_COLORS = { 'P1 — Crítica': '#fb7185', 'P2 — Alta': '#fb923c', 'P3 — Media': '#fbbf24', 'P4 — Baja': '#4ade80' };
 const LEVEL_WEIGHT = { 'Difícil': 3, 'Medio': 2, 'Fácil': 1 };
 const LEVEL_COLORS = { 'Fácil': '#4ade80', 'Medio': '#fbbf24', 'Difícil': '#f87171' };
-const STATUS_COLORS = { 'Pendiente': '#fbbf24', 'En progreso': '#3b82f6', 'En revisión': '#8b5cf6', 'Finalizada': '#22c55e', 'Rechazada': '#f87171' };
+const STATUS_COLORS = {
+  'Pendiente': '#9ca3af', 'En Proceso': '#3b82f6', 'En Espera': '#fbbf24',
+  'Requiere Información': '#fb923c', 'En Validación': '#8b5cf6',
+  'Finalizado': '#22c55e', 'Retrasado': '#f87171', 'Cancelado': '#6b7280', 'Rechazado': '#fb7185'
+};
 const REQUEST_TYPE_COLORS = {
-  'Desarrollo': '#818cf8', 'Corrección de errores': '#f87171', 'Mejora funcional': '#22d3ee',
-  'Mejora visual': '#f472b6', 'Migración': '#fb923c', 'Automatización': '#a3e635'
+  'Nueva Implementación': '#818cf8', 'Reparación / Bug': '#f87171', 'Mantenimiento': '#9ca3af',
+  'Actualización': '#22d3ee', 'Consulta o Asesoría': '#60a5fa', 'Integración': '#c084fc',
+  'Optimización': '#34d399', 'Capacitación': '#f472b6', 'Reporte o Análisis': '#fbbf24',
+  'Soporte Técnico': '#fb923c', 'Automatización': '#a3e635'
 };
 
 function exportCSV(filename, headers, rows) {
@@ -292,16 +299,16 @@ export default function Analysis() {
   const stats = useMemo(() => {
     const now = new Date();
     const total = periodFiltered.length;
-    const finalizada = periodFiltered.filter(r => r.status === 'Finalizada').length;
-    const enProgreso = periodFiltered.filter(r => r.status === 'En progreso').length;
-    const enRevision = periodFiltered.filter(r => r.status === 'En revisión').length;
+    const finalizada = periodFiltered.filter(r => r.status === 'Finalizado').length;
+    const enProgreso = periodFiltered.filter(r => r.status === 'En Proceso').length;
+    const enRevision = periodFiltered.filter(r => r.status === 'En Validación').length;
     const pendiente = periodFiltered.filter(r => r.status === 'Pendiente').length;
-    const rechazada = periodFiltered.filter(r => r.status === 'Rechazada').length;
+    const rechazada = periodFiltered.filter(r => r.status === 'Rechazado').length;
+    const TERMINAL = ['Finalizado', 'Rechazado', 'Cancelado'];
     const vencidas = periodFiltered.filter(r =>
-      r.estimated_due && new Date(r.estimated_due) < now &&
-      r.status !== 'Finalizada' && r.status !== 'Rechazada'
+      r.estimated_due && new Date(r.estimated_due) < now && !TERMINAL.includes(r.status)
     ).length;
-    const withTime = periodFiltered.filter(r => r.status === 'Finalizada' && r.completion_date && r.created_date);
+    const withTime = periodFiltered.filter(r => r.status === 'Finalizado' && r.completion_date && r.created_date);
     const avgResolutionHrs = withTime.length > 0
       ? (withTime.reduce((s, r) => s + (new Date(r.completion_date) - new Date(r.created_date)), 0) / withTime.length / 3600000).toFixed(1)
       : '—';
@@ -310,20 +317,20 @@ export default function Analysis() {
     const avgPerTech = activeTechs.length > 0 ? (total / activeTechs.length).toFixed(1) : '0';
     const finishedPerTech = activeTechs.length > 0 ? (finalizada / activeTechs.length).toFixed(1) : '0';
 
-    const byPriority = ['Alta', 'Media', 'Baja'].map(p => ({ name: p, value: periodFiltered.filter(r => r.priority === p).length }));
+    const byPriority = ['P1 — Crítica', 'P2 — Alta', 'P3 — Media', 'P4 — Baja'].map(p => ({ name: p, value: periodFiltered.filter(r => r.priority === p).length }));
     const byLevel = ['Fácil', 'Medio', 'Difícil'].map(l => ({ name: l, value: periodFiltered.filter(r => r.level === l).length }));
-    const byRequestType = ['Desarrollo', 'Corrección de errores', 'Mejora funcional', 'Mejora visual', 'Migración', 'Automatización']
+    const byRequestType = ['Nueva Implementación', 'Reparación / Bug', 'Mantenimiento', 'Actualización', 'Consulta o Asesoría', 'Integración', 'Optimización', 'Capacitación', 'Reporte o Análisis', 'Soporte Técnico', 'Automatización']
       .map(t => ({ name: t, value: periodFiltered.filter(r => r.request_type === t).length }));
 
-    const byStatus = ['Pendiente', 'En progreso', 'En revisión', 'Finalizada', 'Rechazada'].map(s => ({ name: s, value: periodFiltered.filter(r => r.status === s).length }));
+    const byStatus = ['Pendiente', 'En Proceso', 'En Espera', 'Requiere Información', 'En Validación', 'Finalizado', 'Retrasado', 'Cancelado', 'Rechazado'].map(s => ({ name: s, value: periodFiltered.filter(r => r.status === s).length }));
 
     const deptMap = {};
     periodFiltered.forEach(r => r.department_names?.forEach(d => {
-      if (!deptMap[d]) deptMap[d] = { total: 0, Finalizadas: 0, Pendientes: 0, 'En progreso': 0 };
+      if (!deptMap[d]) deptMap[d] = { total: 0, Finalizadas: 0, Pendientes: 0, 'En Proceso': 0 };
       deptMap[d].total++;
-      if (r.status === 'Finalizada') deptMap[d].Finalizadas++;
+      if (r.status === 'Finalizado') deptMap[d].Finalizadas++;
       else if (r.status === 'Pendiente') deptMap[d].Pendientes++;
-      else if (r.status === 'En progreso') deptMap[d]['En progreso']++;
+      else if (r.status === 'En Proceso') deptMap[d]['En Proceso']++;
     }));
     const byDept = Object.entries(deptMap).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
 
@@ -358,7 +365,7 @@ export default function Analysis() {
   // Rich tech productivity with complexity metrics
   const techProductivity = useMemo(() => techs.map(t => {
     const assigned = periodFiltered.filter(r => r.assigned_to_id === t.email);
-    const finished = assigned.filter(r => r.status === 'Finalizada');
+    const finished = assigned.filter(r => r.status === 'Finalizado');
     const withTime = finished.filter(r => r.completion_date && r.created_date);
     const avgHrs = withTime.length > 0
       ? (withTime.reduce((s, r) => s + (new Date(r.completion_date) - new Date(r.created_date)), 0) / withTime.length / 3600000).toFixed(1)
@@ -385,11 +392,11 @@ export default function Analysis() {
       name: t.full_name || t.email,
       email: t.email,
       Asignadas: assigned.length,
-      'En progreso': assigned.filter(r => r.status === 'En progreso').length,
-      'En revisión': assigned.filter(r => r.status === 'En revisión').length,
+      'En Proceso': assigned.filter(r => r.status === 'En Proceso').length,
+      'En Validación': assigned.filter(r => r.status === 'En Validación').length,
       Finalizadas: finished.length,
       Pendientes: assigned.filter(r => r.status === 'Pendiente').length,
-      Rechazadas: assigned.filter(r => r.status === 'Rechazada').length,
+      Rechazadas: assigned.filter(r => r.status === 'Rechazado').length,
       avgHrs,
       complexityScore,
       difficultCount,
@@ -484,20 +491,20 @@ export default function Analysis() {
     })
   );
   const exportProdCSV = () => exportCSV('productividad_tecnicos',
-    ['Técnico', 'Asignadas', 'Finalizadas', 'En progreso', 'Rechazadas', 'Prom.h', 'Complejidad', 'Difíciles', 'Medios', 'Fáciles', 'A tiempo%'],
-    techProductivity.map(t => [t.name, t.Asignadas, t.Finalizadas, t['En progreso'], t.Rechazadas, t.avgHrs, t.complexityScore, t.difficultCount, t.mediumCount, t.easyCount, t.onTimeRate !== null ? `${t.onTimeRate}%` : '—'])
+    ['Técnico', 'Asignadas', 'Finalizadas', 'En Proceso', 'Rechazadas', 'Prom.h', 'Complejidad', 'Difíciles', 'Medios', 'Fáciles', 'A tiempo%'],
+    techProductivity.map(t => [t.name, t.Asignadas, t.Finalizadas, t['En Proceso'], t.Rechazadas, t.avgHrs, t.complexityScore, t.difficultCount, t.mediumCount, t.easyCount, t.onTimeRate !== null ? `${t.onTimeRate}%` : '—'])
   );
   const exportProdPDF = () => exportTablePDF('Productividad por Técnico',
-    ['Técnico', 'Asignadas', 'Finalizadas', 'En progreso', 'Rechazadas', 'Prom.h', 'Complejidad', 'A tiempo%'],
-    techProductivity.map(t => [t.name, t.Asignadas, t.Finalizadas, t['En progreso'], t.Rechazadas, t.avgHrs, t.complexityScore, t.onTimeRate !== null ? `${t.onTimeRate}%` : '—'])
+    ['Técnico', 'Asignadas', 'Finalizadas', 'En Proceso', 'Rechazadas', 'Prom.h', 'Complejidad', 'A tiempo%'],
+    techProductivity.map(t => [t.name, t.Asignadas, t.Finalizadas, t['En Proceso'], t.Rechazadas, t.avgHrs, t.complexityScore, t.onTimeRate !== null ? `${t.onTimeRate}%` : '—'])
   );
   const exportDeptCSV = () => exportCSV('solicitudes_departamento',
-    ['Departamento', 'Total', 'Finalizadas', 'En progreso', 'Pendientes'],
-    stats.byDept.map(d => [d.name, d.total, d.Finalizadas, d['En progreso'], d.Pendientes])
+    ['Departamento', 'Total', 'Finalizadas', 'En Proceso', 'Pendientes'],
+    stats.byDept.map(d => [d.name, d.total, d.Finalizadas, d['En Proceso'], d.Pendientes])
   );
   const exportDeptPDF = () => exportTablePDF('Solicitudes por Departamento',
-    ['Departamento', 'Total', 'Finalizadas', 'En progreso', 'Pendientes'],
-    stats.byDept.map(d => [d.name, d.total, d.Finalizadas, d['En progreso'], d.Pendientes])
+    ['Departamento', 'Total', 'Finalizadas', 'En Proceso', 'Pendientes'],
+    stats.byDept.map(d => [d.name, d.total, d.Finalizadas, d['En Proceso'], d.Pendientes])
   );
 
   // Incident metrics by tech — enriquecido con criticidad, SLA y score
@@ -822,18 +829,18 @@ export default function Analysis() {
             <StatCard title="Total solicitudes" value={stats.total} subtitle="En el periodo" icon={FileText} iconColor="text-gray-400"
               onClick={() => setKpiModal({ title: 'Todas las solicitudes', items: periodFiltered, type: 'total' })} />
             <StatCard title="Finalizadas" value={stats.finalizada} subtitle={`Tasa ${stats.resolutionRate}%`} icon={CheckCircle2} iconColor="text-green-400" highlight="text-green-400"
-              onClick={() => setKpiModal({ title: 'Finalizadas', items: periodFiltered.filter(r => r.status === 'Finalizada'), type: 'finalizada' })} />
-            <StatCard title="En progreso" value={stats.enProgreso} icon={Loader2} iconColor="text-blue-400" highlight="text-blue-400"
-              onClick={() => setKpiModal({ title: 'En progreso', items: periodFiltered.filter(r => r.status === 'En progreso'), type: 'progreso' })} />
+              onClick={() => setKpiModal({ title: 'Finalizadas', items: periodFiltered.filter(r => r.status === 'Finalizado'), type: 'finalizada' })} />
+            <StatCard title="En Proceso" value={stats.enProgreso} icon={Loader2} iconColor="text-blue-400" highlight="text-blue-400"
+              onClick={() => setKpiModal({ title: 'En Proceso', items: periodFiltered.filter(r => r.status === 'En Proceso'), type: 'progreso' })} />
             <StatCard title="Pendientes" value={stats.pendiente} icon={Clock} iconColor="text-yellow-400" highlight="text-yellow-400"
               onClick={() => setKpiModal({ title: 'Pendientes', items: periodFiltered.filter(r => r.status === 'Pendiente'), type: 'pendiente' })} />
-            <StatCard title="En revisión" value={stats.enRevision} icon={Eye} iconColor="text-purple-400" highlight="text-purple-400"
-              onClick={() => setKpiModal({ title: 'En revisión', items: periodFiltered.filter(r => r.status === 'En revisión'), type: 'revision' })} />
+            <StatCard title="En Validación" value={stats.enRevision} icon={Eye} iconColor="text-purple-400" highlight="text-purple-400"
+              onClick={() => setKpiModal({ title: 'En Validación', items: periodFiltered.filter(r => r.status === 'En Validación'), type: 'revision' })} />
             <StatCard title="Rechazadas" value={stats.rechazada} icon={XCircle} iconColor="text-red-400" highlight="text-red-400"
-              onClick={() => setKpiModal({ title: 'Rechazadas', items: periodFiltered.filter(r => r.status === 'Rechazada'), type: 'rechazada' })} />
+              onClick={() => setKpiModal({ title: 'Rechazadas', items: periodFiltered.filter(r => r.status === 'Rechazado'), type: 'rechazada' })} />
             <StatCard title="Tiempo prom. resolución" value={stats.avgResolutionHrs === '—' ? '—' : `${stats.avgResolutionHrs}h`} subtitle="Para finalizadas" icon={AlarmClock} iconColor="text-orange-400" />
             <StatCard title="⚠ Vencidas" value={stats.vencidas} subtitle="Fecha compromiso expirada" icon={AlertTriangle} iconColor="text-orange-400" highlight={stats.vencidas > 0 ? 'text-orange-400' : 'text-white'}
-              onClick={() => setKpiModal({ title: '⚠ Vencidas', items: periodFiltered.filter(r => r.estimated_due && new Date(r.estimated_due) < new Date() && r.status !== 'Finalizada' && r.status !== 'Rechazada'), type: 'vencidas' })} />
+              onClick={() => setKpiModal({ title: '⚠ Vencidas', items: periodFiltered.filter(r => r.estimated_due && new Date(r.estimated_due) < new Date() && !['Finalizado','Rechazado','Cancelado'].includes(r.status)), type: 'vencidas' })} />
           </div>
 
           {/* Daily trend */}
@@ -947,7 +954,7 @@ export default function Analysis() {
                 <table className="w-full text-xs min-w-[800px]">
                   <thead>
                     <tr style={{ borderBottom: '1px solid hsl(217,33%,22%)' }}>
-                      {['Técnico', 'Asignadas', 'Finalizadas', 'En progreso', 'Rechazadas', 'Tasa éxito', 'Prom. horas', 'A tiempo', 'Score complejidad', 'Difícil', 'Medio', 'Fácil'].map(h => (
+                      {['Técnico', 'Asignadas', 'Finalizadas', 'En Proceso', 'Rechazadas', 'Tasa éxito', 'Prom. horas', 'A tiempo', 'Score complejidad', 'Difícil', 'Medio', 'Fácil'].map(h => (
                         <th key={h} className="text-left py-2 px-2 font-medium" style={{ color: 'hsl(215,20%,45%)' }}>{h}</th>
                       ))}
                     </tr>
@@ -960,7 +967,7 @@ export default function Analysis() {
                           <td className="py-2 px-2 text-blue-400 font-medium">{t.name}</td>
                           <td className="py-2 px-2 text-white">{t.Asignadas}</td>
                           <td className="py-2 px-2 text-green-400 font-semibold">{t.Finalizadas}</td>
-                          <td className="py-2 px-2 text-blue-300">{t['En progreso']}</td>
+                          <td className="py-2 px-2 text-blue-300">{t['En Proceso']}</td>
                           <td className="py-2 px-2 text-red-400">{t.Rechazadas}</td>
                           <td className="py-2 px-2"><span className={`font-semibold ${rate >= 70 ? 'text-green-400' : rate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{rate}%</span></td>
                           <td className="py-2 px-2 text-orange-300">{t.avgHrs !== '—' ? `${t.avgHrs}h` : '—'}</td>

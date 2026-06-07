@@ -29,7 +29,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
   const handle = async () => {
     setSaving(true);
     const isApprove = action === 'approve';
-    const newStatus = isApprove ? 'Pendiente' : 'Rechazada';
+    const newStatus = isApprove ? 'Pendiente' : 'Rechazado';
 
     // Usar RPC para evitar problema de schema cache de PostgREST
     const { error } = await supabase.rpc('process_request_approval', {
@@ -39,7 +39,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
       p_approved_by_name: user?.full_name || user?.email || '',
       p_approved_at:      new Date().toISOString(),
       p_approval_notes:   notes || null,
-      p_rejection_reason: isApprove ? null : (notes || 'Rechazada por administración'),
+      p_rejection_reason: isApprove ? null : (notes || 'Rechazado por administración'),
     });
 
     if (error) {
@@ -158,25 +158,30 @@ function ReturnToDevelopmentModal({ request, onClose, onConfirm }) {
   );
 }
 
-const STATUSES = ['Pendiente aprobación', 'Pendiente', 'En progreso', 'En revisión', 'Finalizada', 'Rechazada'];
-const REQUEST_TYPES = ['Desarrollo', 'Corrección de errores', 'Mejora funcional', 'Mejora visual', 'Migración', 'Automatización'];
+const STATUSES = ['Pendiente', 'En Proceso', 'En Espera', 'Requiere Información', 'En Validación', 'Finalizado', 'Retrasado', 'Cancelado', 'Rechazado'];
+const REQUEST_TYPES = ['Nueva Implementación', 'Reparación / Bug', 'Mantenimiento', 'Actualización', 'Consulta o Asesoría', 'Integración', 'Optimización', 'Capacitación', 'Reporte o Análisis', 'Soporte Técnico', 'Automatización'];
 const LEVELS = ['Fácil', 'Medio', 'Difícil'];
 
 const selectCls = "text-xs rounded-lg px-3 py-1.5 cursor-pointer outline-none focus:ring-1 focus:ring-blue-500 min-w-[100px]";
 const selectStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
 
 const PRIORITY_COLORS = {
-  Alta: { bg: 'hsl(0,84%,22%)', text: '#f87171', label: 'Alta' },
-  Media: { bg: 'hsl(38,80%,20%)', text: '#fbbf24', label: 'Media' },
-  Baja: { bg: 'hsl(142,60%,18%)', text: '#4ade80', label: 'Baja' },
+  'P1 — Crítica': { bg: 'hsl(345,70%,22%)', text: '#fb7185', label: 'P1 Crítica' },
+  'P2 — Alta':    { bg: 'hsl(20,84%,22%)',  text: '#fb923c', label: 'P2 Alta' },
+  'P3 — Media':   { bg: 'hsl(38,80%,20%)',  text: '#fbbf24', label: 'P3 Media' },
+  'P4 — Baja':    { bg: 'hsl(142,60%,18%)', text: '#4ade80', label: 'P4 Baja' },
 };
 
 const STATUS_COLORS = {
-  'Pendiente': { bg: 'hsl(38,80%,20%)', text: '#fbbf24' },
-  'En progreso': { bg: 'hsl(217,60%,20%)', text: '#60a5fa' },
-  'En revisión': { bg: 'hsl(270,60%,22%)', text: '#c084fc' },
-  'Finalizada': { bg: 'hsl(142,60%,18%)', text: '#4ade80' },
-  'Rechazada': { bg: 'hsl(0,60%,20%)', text: '#f87171' },
+  'Pendiente':            { bg: 'hsl(220,15%,18%)',  text: '#9ca3af' },
+  'En Proceso':           { bg: 'hsl(217,60%,20%)',  text: '#60a5fa' },
+  'En Espera':            { bg: 'hsl(38,80%,20%)',   text: '#fbbf24' },
+  'Requiere Información': { bg: 'hsl(25,80%,20%)',   text: '#fb923c' },
+  'En Validación':        { bg: 'hsl(270,60%,22%)',  text: '#c084fc' },
+  'Finalizado':           { bg: 'hsl(142,60%,18%)',  text: '#4ade80' },
+  'Retrasado':            { bg: 'hsl(0,60%,20%)',    text: '#f87171' },
+  'Cancelado':            { bg: 'hsl(220,15%,15%)',  text: '#6b7280' },
+  'Rechazado':            { bg: 'hsl(345,60%,18%)',  text: '#fb7185' },
 };
 
 const normalizeStatus = (value = '') =>
@@ -222,7 +227,7 @@ function RequestCard({ req, user, users, onRefresh }) {
   const [worklogs, setWorklogs] = useState([]);
   const qc = useQueryClient();
 
-  const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS.Media;
+  const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS['P3 — Media'];
   const sc = STATUS_COLORS[req.status] || STATUS_COLORS['Pendiente'];
   const role = user?.role || 'employee';
   const canManage = role === 'admin' || role === 'support';
@@ -240,13 +245,13 @@ function RequestCard({ req, user, users, onRefresh }) {
   };
 
   const handleAttend = async () => {
-    const newStatus = req.status === 'Pendiente' ? 'En progreso' : req.status;
+    const newStatus = req.status === 'Pendiente' ? 'En Proceso' : req.status;
     const updates = {
       assigned_to_id: user?.email,
       assigned_to_name: user?.display_name || user?.full_name || user?.email,
       status: newStatus,
     };
-    if (newStatus === 'En progreso' && !req.started_at) {
+    if (newStatus === 'En Proceso' && !req.started_at) {
       updates.started_at = new Date().toISOString();
     }
     try {
@@ -279,14 +284,14 @@ function RequestCard({ req, user, users, onRefresh }) {
   };
 
   const handleSendToReview = () => {
-    if (statusKey !== 'en progreso') return;
+    if (statusKey !== 'en proceso') return;
     setShowEvidence(true);
   };
 
   const handleFinalizar = async () => {
-    if (statusKey !== 'en revision') return;
+    if (statusKey !== 'en validacion') return;
     const completionDate = new Date().toISOString();
-    const updatePayload = { status: 'Finalizada', completion_date: completionDate };
+    const updatePayload = { status: 'Finalizado', completion_date: completionDate };
     if (req.started_at) {
       updatePayload.actual_hours = parseFloat(((new Date(completionDate) - new Date(req.started_at)) / 3600000).toFixed(2));
     }
@@ -294,8 +299,8 @@ function RequestCard({ req, user, users, onRefresh }) {
       await base44.entities.Request.update(req.id, updatePayload);
       await base44.entities.RequestHistory.create({
         request_id: req.id,
-        from_status: 'En revisión',
-        to_status: 'Finalizada',
+        from_status: 'En Validación',
+        to_status: 'Finalizado',
         note: 'Aprobada y finalizada',
         by_user_id: user?.email,
         by_user_name: user?.full_name || user?.email,
@@ -332,14 +337,14 @@ function RequestCard({ req, user, users, onRefresh }) {
   };
 
   const handleReturnToDevelopment = async (reason) => {
-    if (statusKey !== 'en revision') return;
+    if (statusKey !== 'en validacion') return;
     try {
-      await base44.entities.Request.update(req.id, { status: 'En progreso' });
+      await base44.entities.Request.update(req.id, { status: 'En Proceso' });
       await base44.entities.RequestHistory.create({
         request_id: req.id,
-        from_status: 'En revisión',
-        to_status: 'En progreso',
-        note: `Devuelta a desarrollo: ${reason}`,
+        from_status: 'En Validación',
+        to_status: 'En Proceso',
+        note: `Devuelta a proceso: ${reason}`,
         by_user_id: user?.email,
         by_user_name: user?.full_name || user?.email,
       });
@@ -348,7 +353,7 @@ function RequestCard({ req, user, users, onRefresh }) {
           user_id: req.assigned_to_id,
           type: 'status_change',
           title: '↩️ Solicitud devuelta a desarrollo',
-          message: `La solicitud "${req.title}" fue devuelta a En progreso. Motivo: ${reason}`,
+          message: `La solicitud "${req.title}" fue devuelta a En Proceso. Motivo: ${reason}`,
           request_id: req.id,
           request_title: req.title,
           is_read: false,
