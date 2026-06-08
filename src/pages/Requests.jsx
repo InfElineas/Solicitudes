@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table } from 'lucide-react';
+import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table, AlertTriangle } from 'lucide-react';
+import { getSLAInfo, SEMAPHORE_COLOR } from '@/lib/slaUtils';
 import EvidenceModal from '../components/requests/EvidenceModal';
 import RequestsTable from '../components/requests/RequestsTable';
 import AdvancedFilters from '../components/requests/AdvancedFilters';
@@ -392,12 +393,13 @@ function RequestCard({ req, user, users, onRefresh }) {
   const saved = () => { setModal(null); onRefresh(); };
 
   const isAssignedToMe = req.assigned_to_id === user?.email;
-  const isFinalized = statusKey === 'finalizada' || statusKey === 'rechazada';
+  const isFinalized = statusKey === 'finalizado' || statusKey === 'rechazado' || statusKey === 'cancelado';
   const [showApprove, setShowApprove] = useState(false);
-  const isPendingApproval = statusKey === 'pendiente aprobacion';
-  const isInReview = statusKey === 'en revision';
+  const isPendingApproval = false; // eliminado en protocolo v1.0
+  const isInReview = statusKey === 'en validacion';
   const isPending = statusKey === 'pendiente';
-  const isInProgress = statusKey === 'en progreso';
+  const isInProgress = statusKey === 'en proceso';
+  const isRetrasado = statusKey === 'retrasado';
   const canApproveRequests = role === 'admin';
   const canReturnToDevelopment = isInReview && (isRequester || role === 'admin');
 
@@ -441,6 +443,29 @@ function RequestCard({ req, user, users, onRefresh }) {
         )}
       </div>
 
+      {/* SLA Semaphore */}
+      {(() => {
+        const sla = getSLAInfo(req);
+        if (sla.semaphore === 'closed' || sla.semaphore === 'unknown') return null;
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[10px]">
+              <span style={{ color: SEMAPHORE_COLOR[sla.semaphore] }} className="font-semibold flex items-center gap-1">
+                {sla.semaphore === 'breached' && <AlertTriangle className="w-3 h-3" />}
+                {sla.semaphore === 'breached' ? sla.label : `SLA ${sla.pct}%`}
+              </span>
+              {sla.semaphore !== 'breached' && (
+                <span style={{ color: 'hsl(215,20%,45%)' }}>{sla.label}</span>
+              )}
+            </div>
+            <div className="w-full rounded-full h-1" style={{ background: 'hsl(217,33%,22%)' }}>
+              <div className="h-full rounded-full transition-all"
+                style={{ width: `${sla.pct ?? 100}%`, background: SEMAPHORE_COLOR[sla.semaphore] }} />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Description */}
       {req.description && <p className="text-xs line-clamp-2" style={{ color: 'hsl(215,20%,60%)' }}>{req.description}</p>}
       {req.requester_name && <p className="text-xs" style={{ color: 'hsl(215,20%,50%)' }}>Solicitante: {req.requester_name}</p>}
@@ -461,13 +486,12 @@ function RequestCard({ req, user, users, onRefresh }) {
         {(canManage || isRequester) && !isFinalized && !isPendingApproval && (
           <ActionBtn label="Editar" color="gray" onClick={() => setModal('edit')} />
         )}
-        {canManage && isPending && (
+        {canManage && (isPending || isRetrasado) && (
           <ActionBtn label="Atender" color="blue" onClick={handleAttend} />
         )}
         {canManage && isInProgress && (
-          <ActionBtn label="Enviar a revisión" color="blue" onClick={handleSendToReview} />
+          <ActionBtn label="Enviar a validación" color="blue" onClick={handleSendToReview} />
         )}
-        {/* Only admin/superadmin can finalize — tech (support) can only send to review */}
         {(role === 'admin') && isInReview && (
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
         )}

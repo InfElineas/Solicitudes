@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { DetailModal } from './RequestModals';
+import { getSLAInfo, SEMAPHORE_COLOR } from '@/lib/slaUtils';
 
 const muted = 'hsl(215,20%,55%)';
 const PRIORITY_COLORS = {
@@ -51,15 +52,16 @@ export default function RequestsTable({ requests, user, users, onRefresh }) {
           <table className="w-full text-xs min-w-[900px]">
             <thead>
               <tr style={{ background: 'hsl(222,47%,10%)', borderBottom: '1px solid hsl(217,33%,20%)' }}>
-                {['Título', 'Solicitante', 'Tipo', 'Nivel', 'Prioridad', 'Estado', 'Técnico asignado', 'Creado', 'Actualizado', ''].map(h => (
+                {['Título', 'Solicitante', 'Tipo', 'Nivel', 'Prioridad', 'Estado', 'SLA', 'Técnico asignado', 'Creado', ''].map(h => (
                   <th key={h} className="text-left px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: muted }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {requests.map((req, i) => {
-                const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS.Media;
+                const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS['P3 — Media'];
                 const statusColor = STATUS_COLORS[req.status] || '#94a3b8';
+                const sla = getSLAInfo(req);
                 return (
                   <tr key={req.id}
                     style={{
@@ -70,7 +72,12 @@ export default function RequestsTable({ requests, user, users, onRefresh }) {
                     onClick={() => openDetail(req)}
                   >
                     <td className="px-3 py-2.5 font-medium text-white max-w-[200px]">
-                      <span className="truncate block" title={req.title}>{req.title}</span>
+                      <div className="flex items-center gap-1.5">
+                        {sla.semaphore === 'breached' && (
+                          <span className="shrink-0 w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#f87171' }} title="SLA vencido" />
+                        )}
+                        <span className="truncate block" title={req.title}>{req.title}</span>
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: muted }}>{req.requester_name || '—'}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: muted }}>{req.request_type || '—'}</td>
@@ -82,14 +89,36 @@ export default function RequestsTable({ requests, user, users, onRefresh }) {
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className="font-semibold" style={{ color: statusColor }}>{req.status}</span>
                     </td>
+                    {/* SLA semaphore */}
+                    <td className="px-3 py-2.5 min-w-[100px]">
+                      {sla.semaphore === 'closed' || sla.semaphore === 'unknown' ? (
+                        <span style={{ color: 'hsl(215,20%,35%)' }}>—</span>
+                      ) : (
+                        <div className="space-y-0.5" title={sla.label}>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-semibold" style={{ color: SEMAPHORE_COLOR[sla.semaphore] }}>
+                              {sla.semaphore === 'breached' ? '⚠ Vencida' : `${sla.pct}%`}
+                            </span>
+                            <span className="text-[10px] truncate max-w-[70px]" style={{ color: 'hsl(215,20%,45%)' }}>
+                              {sla.label}
+                            </span>
+                          </div>
+                          <div className="w-full rounded-full h-1" style={{ background: 'hsl(217,33%,22%)' }}>
+                            <div className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${sla.pct ?? 100}%`,
+                                background: SEMAPHORE_COLOR[sla.semaphore],
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: 'hsl(217,91%,70%)' }}>
                       {req.assigned_to_name || <span style={{ color: 'hsl(215,20%,35%)' }}>Sin asignar</span>}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: muted }}>
                       {req.created_date ? new Date(req.created_date).toLocaleDateString('es') : '—'}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: muted }}>
-                      {req.updated_date ? new Date(req.updated_date).toLocaleDateString('es') : '—'}
                     </td>
                     <td className="px-3 py-2.5" onClick={e => { e.stopPropagation(); openDetail(req); }}>
                       <button className="px-2.5 py-1 rounded text-xs font-medium hover:opacity-80 whitespace-nowrap"

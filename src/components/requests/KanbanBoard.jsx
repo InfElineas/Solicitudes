@@ -3,6 +3,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { sendFinalizadaEmail } from '@/services/emailNotifications';
+import { getSLAInfo, SEMAPHORE_COLOR } from '@/lib/slaUtils';
 import EvidenceModal from './EvidenceModal';
 import {
   ClassifyModal,
@@ -51,6 +52,7 @@ function KanbanCard({ req, index, user, users, onRefresh }) {
   const [worklogs, setWorklogs] = useState([]);
 
   const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS['P3 — Media'];
+  const sla = getSLAInfo(req);
   const saved = () => { setModal(null); onRefresh(); };
 
   const openDetail = async (e) => {
@@ -107,6 +109,22 @@ function KanbanCard({ req, index, user, users, onRefresh }) {
               <p>📅 {new Date(req.estimated_due).toLocaleDateString('es')}</p>
             )}
           </div>
+
+          {/* SLA bar */}
+          {sla.semaphore !== 'closed' && sla.semaphore !== 'unknown' && (
+            <div className="mt-1.5 space-y-0.5">
+              <div className="flex justify-between items-center">
+                <span className="text-[9px] font-semibold" style={{ color: SEMAPHORE_COLOR[sla.semaphore] }}>
+                  {sla.semaphore === 'breached' ? '⚠ Vencida' : `${sla.pct}%`}
+                </span>
+                <span className="text-[9px]" style={{ color: 'hsl(215,20%,40%)' }}>{sla.label}</span>
+              </div>
+              <div className="w-full rounded-full h-0.5" style={{ background: 'hsl(217,33%,25%)' }}>
+                <div className="h-full rounded-full"
+                  style={{ width: `${sla.pct ?? 100}%`, background: SEMAPHORE_COLOR[sla.semaphore] }} />
+              </div>
+            </div>
+          )}
 
           {/* Modals */}
           {showEvidence && (
