@@ -1,23 +1,26 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table, AlertTriangle } from 'lucide-react';
+import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table, AlertTriangle, MessageSquare, BookOpen, Bookmark, X } from 'lucide-react';
 import { getSLAInfo, SEMAPHORE_COLOR } from '@/lib/slaUtils';
 import EvidenceModal from '../components/requests/EvidenceModal';
 import RequestsTable from '../components/requests/RequestsTable';
 import AdvancedFilters from '../components/requests/AdvancedFilters';
 import ExportButton from '../components/requests/ExportButton';
 import { toast } from 'sonner';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import {
   RequestFormModal,
   ClassifyModal,
   AssignModal,
   RejectModal,
   DetailModal,
+  BlockedModal,
 } from '../components/requests/RequestModals';
 import KanbanBoard from '../components/requests/KanbanBoard';
-import { sendFinalizadaEmail } from '@/services/emailNotifications';
+import { sendFinalizadaEmail, sendEnProcesoEmail } from '@/services/emailNotifications';
 
 // ---- APPROVAL MODAL ----
 function ApprovalModal({ request, user, onClose, onSaved }) {
@@ -45,6 +48,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
 
     if (error) {
       console.error('[ApprovalModal] rpc error:', error.message);
+      toast.error('Error al procesar. Inténtalo de nuevo.');
       setSaving(false);
       return;
     }
@@ -75,6 +79,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
     setSaving(false);
     onSaved();
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -220,13 +225,16 @@ function ActionBtn({ label, color, onClick, disabled }) {
   );
 }
 
-function RequestCard({ req, user, users, onRefresh }) {
+function RequestCard({ req, user, users, onRefresh, commentCounts = {} }) {
   const [modal, setModal] = useState(null);
   const [showEvidence, setShowEvidence] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const [showBlockedModal, setShowBlockedModal] = useState(null);
   const [history, setHistory] = useState([]);
   const [worklogs, setWorklogs] = useState([]);
+  const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const pc = PRIORITY_COLORS[req.priority] || PRIORITY_COLORS['P3 — Media'];
   const sc = STATUS_COLORS[req.status] || STATUS_COLORS['Pendiente'];
@@ -246,25 +254,21 @@ function RequestCard({ req, user, users, onRefresh }) {
   };
 
   const handleAttend = async () => {
-    const newStatus = req.status === 'Pendiente' ? 'En Proceso' : req.status;
-    const updates = {
-      assigned_to_id: user?.email,
-      assigned_to_name: user?.display_name || user?.full_name || user?.email,
-      status: newStatus,
-    };
-    if (newStatus === 'En Proceso' && !req.started_at) {
-      updates.started_at = new Date().toISOString();
-    }
+    const newStatus = (req.status === 'Pendiente' || req.status === 'Retrasado') ? 'En Proceso' : req.status;
+    const assignedName = user?.display_name || user?.full_name || user?.email;
+    const startedAt = (newStatus === 'En Proceso' && !req.started_at) ? new Date().toISOString() : null;
     try {
-      await base44.entities.Request.update(req.id, updates);
-      await base44.entities.RequestHistory.create({
-        request_id: req.id,
-        from_status: req.status,
-        to_status: newStatus,
-        note: 'Atendida por técnico',
-        by_user_id: user?.email,
-        by_user_name: user?.full_name || user?.email,
+      const { error: attendError } = await supabase.rpc('record_status_change', {
+        p_request_id:       req.id,
+        p_to_status:        newStatus,
+        p_note:             'Atendida por técnico',
+        p_by_user_id:       user?.email || '',
+        p_by_user_name:     user?.full_name || user?.email || '',
+        p_assigned_to_id:   user?.email || null,
+        p_assigned_to_name: assignedName || null,
+        p_started_at:       startedAt,
       });
+      if (attendError) throw attendError;
       if (req.requester_id && req.requester_id !== user?.email) {
         await base44.entities.Notification.create({
           user_id: req.requester_id,
@@ -275,6 +279,9 @@ function RequestCard({ req, user, users, onRefresh }) {
           request_title: req.title,
           is_read: false,
         });
+      }
+      if (newStatus === 'En Proceso') {
+        sendEnProcesoEmail({ ...req, assigned_to_id: user?.email, assigned_to_name: assignedName, started_at: startedAt || req.started_at });
       }
       toast.success('Solicitud atendida');
       onRefresh();
@@ -289,66 +296,78 @@ function RequestCard({ req, user, users, onRefresh }) {
     setShowEvidence(true);
   };
 
-  const handleFinalizar = async () => {
+  const handleFinalizar = () => {
     if (statusKey !== 'en validacion') return;
-    const completionDate = new Date().toISOString();
-    const updatePayload = { status: 'Finalizado', completion_date: completionDate };
-    if (req.started_at) {
-      updatePayload.actual_hours = parseFloat(((new Date(completionDate) - new Date(req.started_at)) / 3600000).toFixed(2));
-    }
-    try {
-      await base44.entities.Request.update(req.id, updatePayload);
-      await base44.entities.RequestHistory.create({
-        request_id: req.id,
-        from_status: 'En Validación',
-        to_status: 'Finalizado',
-        note: 'Aprobada y finalizada',
-        by_user_id: user?.email,
-        by_user_name: user?.full_name || user?.email,
-      });
-      if (req.requester_id && req.requester_id !== user?.email) {
-        await base44.entities.Notification.create({
-          user_id: req.requester_id,
-          type: 'status_change',
-          title: '✅ Tu solicitud fue finalizada',
-          message: `La solicitud "${req.title}" ha sido aprobada y marcada como Finalizada.`,
-          request_id: req.id,
-          request_title: req.title,
-          is_read: false,
-        });
-      }
-      if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
-        await base44.entities.Notification.create({
-          user_id: req.assigned_to_id,
-          type: 'status_change',
-          title: '✅ Solicitud aprobada y finalizada',
-          message: `La solicitud "${req.title}" fue aprobada por administración.`,
-          request_id: req.id,
-          request_title: req.title,
-          is_read: false,
-        });
-      }
-      sendFinalizadaEmail({ ...req, ...updatePayload });
-      toast.success('Solicitud finalizada');
-      onRefresh();
-    } catch (err) {
-      console.error('[handleFinalizar]', err);
-      toast.error('Error al finalizar. Inténtalo de nuevo.');
-    }
+    setDlg({
+      open: true,
+      msg: '¿Confirmar que la solicitud ha sido completada? Esta acción no se puede deshacer.',
+      confirmLabel: 'Sí, finalizar',
+      onOk: async () => {
+        const completionDate = new Date().toISOString();
+        const actualHours = req.started_at
+          ? parseFloat(((new Date(completionDate) - new Date(req.started_at)) / 3600000).toFixed(2))
+          : null;
+        try {
+          const { error: finalError } = await supabase.rpc('record_status_change', {
+            p_request_id:      req.id,
+            p_to_status:       'Finalizado',
+            p_note:            'Aprobada y finalizada',
+            p_by_user_id:      user?.email || '',
+            p_by_user_name:    user?.full_name || user?.email || '',
+            p_completion_date: completionDate,
+            p_actual_hours:    actualHours,
+          });
+          if (finalError) throw finalError;
+          if (req.requester_id && req.requester_id !== user?.email) {
+            await base44.entities.Notification.create({
+              user_id: req.requester_id,
+              type: 'status_change',
+              title: '✅ Tu solicitud fue finalizada',
+              message: `La solicitud "${req.title}" ha sido aprobada y marcada como Finalizada.`,
+              request_id: req.id,
+              request_title: req.title,
+              is_read: false,
+            });
+          }
+          if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
+            await base44.entities.Notification.create({
+              user_id: req.assigned_to_id,
+              type: 'status_change',
+              title: '✅ Solicitud aprobada y finalizada',
+              message: `La solicitud "${req.title}" fue aprobada por administración.`,
+              request_id: req.id,
+              request_title: req.title,
+              is_read: false,
+            });
+          }
+          sendFinalizadaEmail({ ...req, status: 'Finalizado', completion_date: completionDate, actual_hours: actualHours }).catch(e => console.warn('[Requests] email error (non-critical):', e));
+          toast.success('Solicitud finalizada', {
+            duration: 8000,
+            action: {
+              label: '→ Crear en KB',
+              onClick: () => navigate(`/KnowledgeBase?inc_title=${encodeURIComponent(req.title)}&inc_description=${encodeURIComponent(req.description || '')}&inc_resolution=${encodeURIComponent(req.resolution_note || '')}&inc_category=Otro`),
+            },
+          });
+          onRefresh();
+        } catch (err) {
+          console.error('[handleFinalizar]', err);
+          toast.error('Error al finalizar. Inténtalo de nuevo.');
+        }
+      },
+    });
   };
 
   const handleReturnToDevelopment = async (reason) => {
     if (statusKey !== 'en validacion') return;
     try {
-      await base44.entities.Request.update(req.id, { status: 'En Proceso' });
-      await base44.entities.RequestHistory.create({
-        request_id: req.id,
-        from_status: 'En Validación',
-        to_status: 'En Proceso',
-        note: `Devuelta a proceso: ${reason}`,
-        by_user_id: user?.email,
-        by_user_name: user?.full_name || user?.email,
+      const { error: returnError } = await supabase.rpc('record_status_change', {
+        p_request_id:   req.id,
+        p_to_status:    'En Proceso',
+        p_note:         `Devuelta a proceso: ${reason}`,
+        p_by_user_id:   user?.email || '',
+        p_by_user_name: user?.full_name || user?.email || '',
       });
+      if (returnError) throw returnError;
       if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
         await base44.entities.Notification.create({
           user_id: req.assigned_to_id,
@@ -361,33 +380,78 @@ function RequestCard({ req, user, users, onRefresh }) {
         });
       }
       toast.success('Solicitud devuelta a desarrollo');
-      setShowReturnModal(false);
       onRefresh();
     } catch (err) {
       console.error('[handleReturnToDevelopment]', err);
       toast.error('No se pudo devolver la solicitud a desarrollo.');
+    } finally {
+      setShowReturnModal(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm('¿Mover esta solicitud a la papelera?')) return;
+  const handleResumeFromBlocked = async () => {
     try {
-      await base44.entities.Request.update(req.id, { is_deleted: true });
-      const expireAt = new Date();
-      expireAt.setDate(expireAt.getDate() + 30);
-      await base44.entities.RequestTrash.create({
-        original_request_id: req.id,
-        snapshot: JSON.stringify(req),
-        deleted_by_id: user?.email,
-        deleted_by_name: user?.full_name || user?.email,
-        expire_at: expireAt.toISOString(),
+      const { error: resumeError } = await supabase.rpc('record_status_change', {
+        p_request_id:   req.id,
+        p_to_status:    'En Proceso',
+        p_note:         'Bloqueante resuelto, solicitud reanudada',
+        p_by_user_id:   user?.email || '',
+        p_by_user_name: user?.full_name || user?.email || '',
       });
-      toast.success('Solicitud movida a la papelera');
+      if (resumeError) throw resumeError;
+      if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
+        await base44.entities.Notification.create({
+          user_id: req.assigned_to_id,
+          type: 'status_change',
+          title: '▶ Solicitud reanudada',
+          message: `La solicitud "${req.title}" fue reanudada y está En Proceso.`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      }
+      toast.success('Solicitud reanudada en proceso');
       onRefresh();
     } catch (err) {
-      console.error('[handleDelete]', err);
-      toast.error('Error al eliminar. Inténtalo de nuevo.');
+      console.error('[handleResumeFromBlocked]', err);
+      toast.error('Error al reanudar. Inténtalo de nuevo.');
     }
+  };
+
+  const handleDelete = () => {
+    setDlg({
+      open: true,
+      msg: '¿Mover esta solicitud a la papelera? Podrás recuperarla dentro de 30 días.',
+      confirmLabel: 'Mover a papelera',
+      onOk: async () => {
+        try {
+          await base44.entities.Request.update(req.id, { is_deleted: true });
+        } catch (err) {
+          console.error('[handleDelete] update error:', err);
+          toast.error('Error al eliminar. Inténtalo de nuevo.');
+          return;
+        }
+        try {
+          const expireAt = new Date();
+          expireAt.setDate(expireAt.getDate() + 30);
+          await base44.entities.RequestTrash.create({
+            original_request_id: req.id,
+            snapshot: JSON.stringify(req),
+            deleted_by_id: user?.email,
+            deleted_by_name: user?.full_name || user?.email,
+            expire_at: expireAt.toISOString(),
+          });
+        } catch (err) {
+          console.error('[handleDelete] trash create error:', err);
+          // Rollback: unmark as deleted so the record isn't orphaned
+          await base44.entities.Request.update(req.id, { is_deleted: false }).catch(() => {});
+          toast.error('Error al mover a papelera');
+          return;
+        }
+        toast.success('Solicitud movida a la papelera');
+        onRefresh();
+      },
+    });
   };
 
   const saved = () => { setModal(null); onRefresh(); };
@@ -400,6 +464,8 @@ function RequestCard({ req, user, users, onRefresh }) {
   const isPending = statusKey === 'pendiente';
   const isInProgress = statusKey === 'en proceso';
   const isRetrasado = statusKey === 'retrasado';
+  const isInWaiting = statusKey === 'en espera';
+  const isRequiresInfo = statusKey === 'requiere informacion';
   const canApproveRequests = role === 'admin';
   const canReturnToDevelopment = isInReview && (isRequester || role === 'admin');
 
@@ -436,9 +502,17 @@ function RequestCard({ req, user, users, onRefresh }) {
       <div className="flex flex-wrap gap-1 text-[10px] font-medium">
         {req.level && <span className="px-1.5 py-0.5 rounded" style={{ background: req.level === 'Difícil' ? 'hsl(0,40%,18%)' : req.level === 'Medio' ? 'hsl(38,40%,18%)' : 'hsl(142,40%,14%)', color: req.level === 'Difícil' ? '#f87171' : req.level === 'Medio' ? '#fbbf24' : '#4ade80' }}>{req.level}</span>}
         {req.request_type && <span className="px-1.5 py-0.5 rounded" style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>{req.request_type}</span>}
+        {req.origin && <span className="px-1.5 py-0.5 rounded" style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,65%)' }}>
+          {{'WhatsApp':'💬','Presencial':'🏢','Email':'📧','Web':'🌐'}[req.origin] || '📌'} {req.origin}
+        </span>}
         {req.file_urls?.length > 0 && (
           <span className="px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,65%)' }}>
             <Paperclip className="w-2.5 h-2.5" />{req.file_urls.length}
+          </span>
+        )}
+        {(commentCounts[req.id] || 0) > 0 && (
+          <span className="px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: 'hsl(270,40%,20%)', color: '#c084fc' }}>
+            <MessageSquare className="w-2.5 h-2.5" />{commentCounts[req.id]}
           </span>
         )}
       </div>
@@ -492,6 +566,21 @@ function RequestCard({ req, user, users, onRefresh }) {
         {canManage && isInProgress && (
           <ActionBtn label="Enviar a validación" color="blue" onClick={handleSendToReview} />
         )}
+        {canManage && (isInProgress || isPending) && (
+          <ActionBtn label="⏸ En Espera" color="gray" onClick={() => setShowBlockedModal('En Espera')} />
+        )}
+        {canManage && (isInProgress || isPending) && (
+          <ActionBtn label="⚠ Req. Info" color="gray" onClick={() => setShowBlockedModal('Requiere Información')} />
+        )}
+        {canManage && isInProgress && (
+          <ActionBtn label="⏰ Retrasado" color="red" onClick={() => setShowBlockedModal('Retrasado')} />
+        )}
+        {canManage && (isInWaiting || isRequiresInfo) && (
+          <ActionBtn label="▶ Reanudar" color="blue" onClick={handleResumeFromBlocked} />
+        )}
+        {canManage && (isInWaiting || isRequiresInfo) && (
+          <ActionBtn label="Enviar a validación" color="blue" onClick={() => setShowEvidence(true)} />
+        )}
         {(role === 'admin') && isInReview && (
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
         )}
@@ -504,10 +593,11 @@ function RequestCard({ req, user, users, onRefresh }) {
       {/* Modals */}
       {modal === 'edit' && <RequestFormModal request={req} departments={[]} onClose={() => setModal(null)} onSaved={saved} user={user} />}
       {modal === 'classify' && <ClassifyModal request={req} onClose={() => setModal(null)} onSaved={saved} user={user} />}
-      {modal === 'assign' && <AssignModal request={req} users={users} onClose={() => setModal(null)} onSaved={saved} />}
+      {modal === 'assign' && <AssignModal request={req} users={users} onClose={() => setModal(null)} onSaved={saved} user={user} />}
       {modal === 'reject' && <RejectModal request={req} onClose={() => setModal(null)} onSaved={saved} user={user} />}
       {modal === 'detail' && <DetailModal request={req} history={history} worklogs={worklogs} onClose={() => setModal(null)} user={user} />}
       {showEvidence && <EvidenceModal request={req} user={user} onClose={() => setShowEvidence(false)} onSaved={() => { setShowEvidence(false); onRefresh(); }} />}
+      {showBlockedModal && <BlockedModal request={req} targetStatus={showBlockedModal} user={user} onClose={() => setShowBlockedModal(null)} onSaved={() => { setShowBlockedModal(null); onRefresh(); }} />}
       {showApprove && <ApprovalModal request={req} user={user} onClose={() => setShowApprove(false)} onSaved={saved} />}
       {showReturnModal && (
         <ReturnToDevelopmentModal
@@ -516,30 +606,62 @@ function RequestCard({ req, user, users, onRefresh }) {
           onConfirm={handleReturnToDevelopment}
         />
       )}
+      <ConfirmDialog
+        open={dlg.open}
+        message={dlg.msg}
+        confirmLabel={dlg.confirmLabel}
+        onConfirm={() => { const fn = dlg.onOk; setDlg({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null }); fn?.(); }}
+        onCancel={() => setDlg({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null })}
+      />
     </div>
   );
 }
 
 const PAGE_SIZES = [10, 20, 30, 50];
+const _FPM = { status: 'status', dept: 'dept', request_type: 'type', level: 'level', assigned: 'assigned', requester: 'requester', priority: 'priority', dateFrom: 'from', dateTo: 'to' };
 
 export default function Requests() {
   const [user, setUser] = useState(null);
-  const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ status: '', dept: '', request_type: '', level: '', assigned: '', requester: '', priority: '', dateFrom: '', dateTo: '' });
-  const [sort, setSort] = useState('created_desc');
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(30);
+  const [sp, setSP] = useSearchParams();
   const [showNew, setShowNew] = useState(false);
-  const [viewMode, setViewMode] = useState('list'); // 'list' | 'table' | 'kanban'
   const qc = useQueryClient();
+
+  const search   = sp.get('q') || '';
+  const sort     = sp.get('sort') || 'created_desc';
+  const viewMode = sp.get('view') || 'list';
+  const page     = parseInt(sp.get('page') || '0', 10);
+  const pageSize = parseInt(sp.get('size') || '30', 10);
+  const filters  = { status: sp.get('status') || '', dept: sp.get('dept') || '', request_type: sp.get('type') || '', level: sp.get('level') || '', assigned: sp.get('assigned') || '', requester: sp.get('requester') || '', priority: sp.get('priority') || '', dateFrom: sp.get('from') || '', dateTo: sp.get('to') || '' };
+
+  const setSearch   = (val)      => setSP(p => { const n = new URLSearchParams(p); val ? n.set('q', val) : n.delete('q'); n.delete('page'); return n; });
+  const setSort     = (val)      => setSP(p => { const n = new URLSearchParams(p); val !== 'created_desc' ? n.set('sort', val) : n.delete('sort'); return n; });
+  const setViewMode = (val)      => setSP(p => { const n = new URLSearchParams(p); val !== 'list' ? n.set('view', val) : n.delete('view'); return n; });
+  const setPageSize = (val)      => setSP(p => { const n = new URLSearchParams(p); val !== 30 ? n.set('size', String(val)) : n.delete('size'); n.delete('page'); return n; });
+  const setPage     = (valOrFn)  => setSP(p => { const n = new URLSearchParams(p); const cur = parseInt(p.get('page') || '0', 10); const next = typeof valOrFn === 'function' ? valOrFn(cur) : valOrFn; next > 0 ? n.set('page', String(next)) : n.delete('page'); return n; });
+  const setFilters  = (objOrFn)  => setSP(p => {
+    const n = new URLSearchParams(p);
+    const cur = { status: p.get('status') || '', dept: p.get('dept') || '', request_type: p.get('type') || '', level: p.get('level') || '', assigned: p.get('assigned') || '', requester: p.get('requester') || '', priority: p.get('priority') || '', dateFrom: p.get('from') || '', dateTo: p.get('to') || '' };
+    const next = typeof objOrFn === 'function' ? objOrFn(cur) : objOrFn;
+    Object.entries(_FPM).forEach(([k, pk]) => { next[k] ? n.set(pk, next[k]) : n.delete(pk); });
+    n.delete('page');
+    return n;
+  });
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
   }, []);
 
   const { data: requests = [], isLoading, refetch } = useQuery({
-    queryKey: ['requests-list'],
-    queryFn: () => base44.entities.Request.filter({ is_deleted: false }, '-created_date', 500),
+    queryKey: ['requests-list', user?.email, user?.role],
+    queryFn: () => {
+      const privileged = user?.role === 'admin' || user?.role === 'support' || user?.role === 'auditor';
+      const conditions = { is_deleted: false };
+      if (!privileged && user?.email) conditions.requester_id = user.email;
+      return base44.entities.Request.filter(conditions, '-created_date', 500);
+    },
+    enabled: !!user,
+    refetchInterval: 30_000,
+    staleTime: 0,
   });
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -548,16 +670,28 @@ export default function Requests() {
   });
   const { data: users = [] } = useQuery({
     queryKey: ['all-users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.filter({ is_active: true }),
     initialData: [],
+  });
+  const { data: commentCounts = {} } = useQuery({
+    queryKey: ['comment-counts'],
+    queryFn: async () => {
+      const all = await base44.entities.RequestComment.list();
+      const counts = {};
+      all.forEach(c => { if (c.request_id) counts[c.request_id] = (counts[c.request_id] || 0) + 1; });
+      return counts;
+    },
+    staleTime: 60_000,
   });
 
   const role = user?.role || 'employee';
+  const canSeeAll = role === 'admin' || role === 'support' || role === 'auditor';
   const canCreateRequests = role === 'jefe' || role === 'admin';
 
   const filtered = useMemo(() => {
     let r = requests;
-    if (role === 'employee') r = r.filter(x => x.requester_id === user?.email);
+    // Empleados y jefes solo ven sus propias solicitudes (segunda capa de seguridad)
+    if (!canSeeAll) r = r.filter(x => x.requester_id === user?.email);
     if (search) {
       const s = search.toLowerCase();
       r = r.filter(x => x.title?.toLowerCase().includes(s) || x.description?.toLowerCase().includes(s));
@@ -566,7 +700,8 @@ export default function Requests() {
     if (filters.dept) r = r.filter(x => x.department_names?.includes(filters.dept));
     if (filters.request_type) r = r.filter(x => x.request_type === filters.request_type);
     if (filters.level) r = r.filter(x => x.level === filters.level);
-    if (filters.assigned) r = r.filter(x => x.assigned_to_id === filters.assigned);
+    if (filters.assigned === 'NONE') r = r.filter(x => !x.assigned_to_id);
+    else if (filters.assigned) r = r.filter(x => x.assigned_to_id === filters.assigned);
     if (filters.requester) r = r.filter(x => x.requester_id === filters.requester);
     if (filters.priority) r = r.filter(x => x.priority === filters.priority);
     if (filters.dateFrom) r = r.filter(x => x.created_date && new Date(x.created_date) >= new Date(filters.dateFrom));
@@ -580,7 +715,7 @@ export default function Requests() {
       r = [...r].sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1));
     }
     return r;
-  }, [requests, search, filters, sort, role, user]);
+  }, [requests, search, filters, sort, canSeeAll, user?.email]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice(page * pageSize, (page + 1) * pageSize);
@@ -588,6 +723,21 @@ export default function Requests() {
   const end = Math.min((page + 1) * pageSize, filtered.length);
 
   const setF = (k, v) => { setFilters(f => ({ ...f, [k]: v === 'all' ? '' : v })); setPage(0); };
+  const clearFilters = () => { setFilters({ status: '', dept: '', request_type: '', level: '', assigned: '', requester: '', priority: '', dateFrom: '', dateTo: '' }); setSearch(''); setPage(0); };
+  const hasActiveFilters = Object.values(filters).some(Boolean) || !!search;
+
+  const PRESETS = [
+    ...(role !== 'employee' ? [{ label: 'Mis activas', icon: '👤', f: { assigned: user?.email, status: '' } }] : []),
+    { label: 'Urgentes',     icon: '🔴', f: { priority: 'P1 — Crítica' } },
+    { label: 'Sin asignar',  icon: '⚠️', f: { assigned: 'NONE' } },
+    { label: 'En Validación',icon: '🔍', f: { status: 'En Validación' } },
+    { label: 'Retrasadas',   icon: '⏰', f: { status: 'Retrasado' } },
+  ];
+
+  const applyPreset = (preset) => {
+    const next = { status: '', dept: '', request_type: '', level: '', assigned: '', requester: '', priority: '', dateFrom: '', dateTo: '', ...preset.f };
+    setFilters(next); setSearch(''); setPage(0);
+  };
 
   const techUsers = users.filter(u => u.role === 'admin' || u.role === 'support');
 
@@ -641,7 +791,7 @@ export default function Requests() {
           )}
         </div>
       </div>
-      {!canCreateRequests && (
+      {!canCreateRequests && role !== 'auditor' && (
         <div
           className="mb-4 rounded-lg px-3 py-2 text-xs"
           style={{ background: 'hsl(38,80%,14%)', border: '1px solid hsl(38,80%,25%)', color: '#fbbf24' }}
@@ -660,6 +810,29 @@ export default function Requests() {
           className="w-full pl-8 pr-3 py-2 rounded-lg text-sm outline-none"
           style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white' }}
         />
+      </div>
+
+      {/* Quick preset filters */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-2">
+        {PRESETS.map(p => (
+          <button
+            key={p.label}
+            onClick={() => applyPreset(p)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors hover:brightness-110"
+            style={{ background: 'hsl(217,33%,20%)', color: 'hsl(215,20%,70%)', border: '1px solid hsl(217,33%,28%)' }}
+          >
+            {p.icon} {p.label}
+          </button>
+        ))}
+        {hasActiveFilters && (
+          <button
+            onClick={clearFilters}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
+            style={{ background: 'hsl(0,50%,18%)', color: '#f87171', border: '1px solid hsl(0,50%,25%)' }}
+          >
+            <X className="w-3 h-3" /> Limpiar filtros
+          </button>
+        )}
       </div>
 
       {/* Advanced filters */}
@@ -718,7 +891,7 @@ export default function Requests() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {paginated.map(req => (
-            <RequestCard key={req.id} req={req} user={user} users={users} onRefresh={refetch} />
+            <RequestCard key={req.id} req={req} user={user} users={users} onRefresh={refetch} commentCounts={commentCounts} />
           ))}
         </div>
       )}

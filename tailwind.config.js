@@ -62,6 +62,14 @@ module.exports = {
   			}
   		},
   		keyframes: {
+  			wiggle: {
+  				'0%, 100%': { transform: 'rotate(0deg)' },
+  				'15%':       { transform: 'rotate(12deg)' },
+  				'30%':       { transform: 'rotate(-10deg)' },
+  				'45%':       { transform: 'rotate(8deg)' },
+  				'60%':       { transform: 'rotate(-6deg)' },
+  				'75%':       { transform: 'rotate(4deg)' },
+  			},
   			'accordion-down': {
   				from: {
   					height: '0'
@@ -81,7 +89,8 @@ module.exports = {
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+  			wiggle: 'wiggle 1.5s ease-in-out infinite',
   		}
   	}
   },

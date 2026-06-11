@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Plus, Clock, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User, Trash2, ArrowUpDown } from 'lucide-react';
+import { Shield, Plus, Clock, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User, Trash2, ArrowUpDown, BarChart2 } from 'lucide-react';
 import MonthlyPlanner from '../components/guards/MonthlyPlanner';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { toast } from 'sonner';
 
 const inputStyle  = { background: 'hsl(222,47%,16%)', border: '1px solid hsl(217,33%,26%)', color: 'white', outline: 'none' };
@@ -36,7 +37,7 @@ function getActiveGuardia(guardias) {
 }
 
 // ── GuardiaForm ───────────────────────────────────────────────
-function GuardiaForm({ guardia, techs, user, onClose, onSaved }) {
+function GuardiaForm({ guardia, techs, user, guardias, onClose, onSaved }) {
   const isEdit = !!guardia;
   const now = new Date();
   const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -70,9 +71,26 @@ function GuardiaForm({ guardia, techs, user, onClose, onSaved }) {
       toast.error('Completa técnico, inicio y fin');
       return;
     }
-    if (new Date(form.fin) <= new Date(form.inicio)) {
+    const inicio = new Date(form.inicio);
+    const fin = new Date(form.fin);
+    if (isNaN(inicio) || isNaN(fin)) {
+      toast.error('Las fechas de inicio y fin no son válidas');
+      return;
+    }
+    if (fin <= inicio) {
       toast.error('La fecha de fin debe ser posterior al inicio');
       return;
+    }
+    if (!isEdit) {
+      const overlapping = guardias.filter(g =>
+        g.tecnico_id === form.tecnico_id &&
+        g.estado !== 'cancelada' && g.estado !== 'finalizada' && g.estado !== 'reemplazada' &&
+        new Date(g.inicio) < fin && new Date(g.fin) > inicio
+      );
+      if (overlapping.length > 0) {
+        toast.error('El técnico ya tiene una guardia en ese horario');
+        return;
+      }
     }
     setSaving(true);
     const payload = {
@@ -278,6 +296,236 @@ function isToday(g) {
 function isFuture(g)  { return new Date(g.inicio) > new Date(); }
 function isPast(g)    { return new Date(g.fin) < new Date(); }
 
+// ── Cobertura 24/7 — Mejora D ─────────────────────────────────
+// Muestra los próximos 7 días como grilla de 24h.
+// Cada celda (4h) se colorea según cobertura.
+const DAYS_AHEAD = 7;
+const BLOCK_HOURS = 4; // granularidad de la grilla
+const BLOCKS = 24 / BLOCK_HOURS; // 6 bloques por día
+
+function CoverageHeatmap({ guardias }) {
+  const now = new Date();
+  // Construir días
+  const days = Array.from({ length: DAYS_AHEAD }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + i);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+
+  // Para cada bloque (día × franja), calcular qué guardias lo cubren
+  const getCoverage = (dayStart, blockIdx) => {
+    const from = new Date(dayStart.getTime() + blockIdx * BLOCK_HOURS * 3600000);
+    const to   = new Date(from.getTime() + BLOCK_HOURS * 3600000);
+    return guardias.filter(g => {
+      if (g.estado === 'cancelada' || g.estado === 'finalizada' || g.estado === 'reemplazada') return false;
+      return new Date(g.inicio) < to && new Date(g.fin) > from;
+    });
+  };
+
+  const blockLabel = (i) => {
+    const h = i * BLOCK_HOURS;
+    return `${String(h).padStart(2, '0')}h`;
+  };
+
+  const uncoveredGaps = days.reduce((acc, day) => {
+    for (let b = 0; b < BLOCKS; b++) {
+      if (getCoverage(day, b).length === 0) acc++;
+    }
+    return acc;
+  }, 0);
+  const totalBlocks = DAYS_AHEAD * BLOCKS;
+  const coveragePct = Math.round(((totalBlocks - uncoveredGaps) / totalBlocks) * 100);
+
+  return (
+    <div className="rounded-xl p-4" style={{ background: 'hsl(222,47%,12%)', border: '1px solid hsl(217,33%,18%)' }}>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-xs font-semibold text-white">Cobertura 24/7 — próximos 7 días</p>
+          <p className="text-[10px] mt-0.5" style={{ color: 'hsl(215,20%,50%)' }}>
+            Cada bloque = {BLOCK_HOURS}h · Verde = cubierto · Rojo = sin guardia
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-bold" style={{ color: coveragePct >= 80 ? '#4ade80' : coveragePct >= 50 ? '#fbbf24' : '#f87171' }}>
+            {coveragePct}%
+          </p>
+          <p className="text-[10px]" style={{ color: 'hsl(215,20%,50%)' }}>cobertura</p>
+        </div>
+      </div>
+
+      {/* Grilla */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-[9px]" style={{ minWidth: 420 }}>
+          <thead>
+            <tr>
+              <th className="w-14 text-left pb-1 font-medium" style={{ color: 'hsl(215,20%,50%)' }}>Día</th>
+              {Array.from({ length: BLOCKS }, (_, i) => (
+                <th key={i} className="text-center pb-1 font-medium" style={{ color: 'hsl(215,20%,50%)' }}>
+                  {blockLabel(i)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((day, di) => {
+              const isToday = di === 0;
+              const dayLabel = day.toLocaleDateString('es', { weekday: 'short', day: '2-digit' });
+              return (
+                <tr key={di}>
+                  <td className="pr-2 py-0.5 font-medium whitespace-nowrap" style={{ color: isToday ? '#60a5fa' : 'hsl(215,20%,65%)' }}>
+                    {dayLabel}{isToday ? ' ●' : ''}
+                  </td>
+                  {Array.from({ length: BLOCKS }, (_, bi) => {
+                    const covered = getCoverage(day, bi);
+                    const isCurrent = (() => {
+                      const from = new Date(day.getTime() + bi * BLOCK_HOURS * 3600000);
+                      const to   = new Date(from.getTime() + BLOCK_HOURS * 3600000);
+                      return now >= from && now < to;
+                    })();
+                    const bg = covered.length > 0
+                      ? covered.length >= 2 ? 'hsl(142,70%,22%)' : 'hsl(142,60%,18%)'
+                      : 'hsl(0,50%,16%)';
+                    const border = isCurrent ? '2px solid #60a5fa' : '1px solid hsl(217,33%,14%)';
+                    const title = covered.length > 0
+                      ? covered.map(g => g.tecnico_nombre).join(', ')
+                      : 'Sin cobertura';
+                    return (
+                      <td key={bi} className="py-0.5 px-0.5" title={title}>
+                        <div className="h-5 rounded-sm transition-all hover:opacity-80 flex items-center justify-center"
+                          style={{ background: bg, border, minWidth: 28 }}>
+                          {covered.length >= 2 && (
+                            <span style={{ color: '#4ade80', fontSize: 8 }}>{covered.length}</span>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Leyenda */}
+      <div className="flex items-center gap-3 mt-2 flex-wrap">
+        {[
+          { color: 'hsl(142,60%,18%)', label: '1 técnico' },
+          { color: 'hsl(142,70%,22%)', label: '2+ técnicos' },
+          { color: 'hsl(0,50%,16%)',   label: 'Sin guardia' },
+          { color: 'transparent', border: '2px solid #60a5fa', label: 'Ahora' },
+        ].map(({ color, border, label }) => (
+          <div key={label} className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm" style={{ background: color, border: border || '1px solid hsl(217,33%,22%)' }} />
+            <span style={{ color: 'hsl(215,20%,50%)', fontSize: 9 }}>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {uncoveredGaps > 0 && (
+        <p className="text-[10px] mt-2 px-2 py-1 rounded" style={{ background: 'hsl(0,50%,14%)', color: '#fca5a5' }}>
+          ⚠ {uncoveredGaps} bloque(s) de {BLOCK_HOURS}h sin cobertura en los próximos 7 días
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SelfAssignModal({ user, guardias, onClose, onSaved }) {
+  const now = new Date();
+  const pad = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const [inicio, setInicio] = React.useState(pad(now));
+  const [fin, setFin] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  const setShift = (hours) => {
+    if (!inicio) return;
+    const f = new Date(new Date(inicio).getTime() + hours * 3600000);
+    setFin(pad(f));
+  };
+
+  const handleSave = async () => {
+    if (!inicio || !fin) { toast.error('Indica inicio y fin del turno'); return; }
+    const inicioDate = new Date(inicio);
+    const finDate = new Date(fin);
+    if (isNaN(inicioDate) || isNaN(finDate)) {
+      toast.error('Las fechas de inicio y fin no son válidas');
+      return;
+    }
+    if (finDate <= inicioDate) { toast.error('El fin debe ser posterior al inicio'); return; }
+    const overlapping = guardias.filter(g =>
+      g.tecnico_id === user?.email &&
+      g.estado !== 'cancelada' && g.estado !== 'finalizada' && g.estado !== 'reemplazada' &&
+      new Date(g.inicio) < finDate && new Date(g.fin) > inicioDate
+    );
+    if (overlapping.length > 0) {
+      toast.error('El técnico ya tiene una guardia en ese horario');
+      return;
+    }
+    setSaving(true);
+    try {
+      await base44.entities.Guardia.create({
+        tecnico_id: user.email,
+        tecnico_nombre: user.full_name || user.email,
+        inicio: new Date(inicio).toISOString(),
+        fin: new Date(fin).toISOString(),
+        tipo: 'voluntaria',
+        estado: 'programada',
+        creada_por: user.email,
+        creada_por_nombre: user.full_name || user.email,
+      });
+      toast.success('Turno registrado correctamente');
+      onSaved();
+    } catch (err) {
+      toast.error('Error al registrar el turno');
+      console.error('[SelfAssign]', err);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-xl p-6 space-y-4" style={modalStyle} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <Shield className="w-4 h-4 text-green-400" /> Cubrirme para turno
+          </h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-gray-400" /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Inicio del turno</label>
+            <input type="datetime-local" value={inicio} onChange={e => setInicio(e.target.value)} className={inputCls} style={inputStyle} />
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            <span className="text-[10px] self-center" style={{ color: muted }}>Duración rápida:</span>
+            {[4, 6, 8, 12].map(h => (
+              <button key={h} onClick={() => setShift(h)}
+                className="text-xs px-2.5 py-1 rounded hover:opacity-80"
+                style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
+                +{h}h
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className={labelCls}>Fin del turno</label>
+            <input type="datetime-local" value={fin} onChange={e => setFin(e.target.value)} className={inputCls} style={inputStyle} />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 py-2 text-sm rounded-lg hover:bg-white/10" style={{ color: muted }}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2 text-sm font-bold rounded-lg text-white hover:opacity-90 disabled:opacity-50"
+            style={{ background: 'hsl(217,91%,45%)' }}>
+            {saving ? 'Guardando...' : 'Confirmar turno'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────
 export default function Guards() {
   const [user, setUser]               = useState(null);
@@ -288,6 +536,8 @@ export default function Guards() {
   const [showPast, setShowPast]       = useState(false);
   const [selected, setSelected]       = useState(new Set());
   const [sortDir, setSortDir]         = useState('desc');
+  const [showSelfAssign, setShowSelfAssign] = useState(false);
+  const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
   const qc = useQueryClient();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
@@ -295,7 +545,8 @@ export default function Guards() {
   const role       = user?.role || 'employee';
   const canManage  = role === 'admin';
   const isSupport  = role === 'support';
-  const isTech     = canManage || isSupport;
+  const isAuditor  = role === 'auditor';
+  const isTech     = canManage || isSupport || isAuditor;
 
   const { data: guardias = [], isLoading } = useQuery({
     queryKey: ['guardias'],
@@ -305,11 +556,18 @@ export default function Guards() {
 
   const { data: allUsers = [] } = useQuery({
     queryKey: ['all-users'],
-    queryFn:  () => base44.entities.User.list(),
+    queryFn:  () => base44.entities.User.filter({ is_active: true }),
     initialData: [],
   });
 
-  const techs = allUsers.filter(u => u.role === 'admin' || u.role === 'support');
+  const techs = allUsers.filter(u => u.role === 'support' || u.department?.toLowerCase() === 'soporte');
+
+  const { data: incidents = [] } = useQuery({
+    queryKey: ['incidents-guards-stats'],
+    queryFn:  () => base44.entities.Incident.list('-created_date', 500),
+    initialData: [],
+    enabled: isTech,
+  });
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['guardias'] });
@@ -322,7 +580,7 @@ export default function Guards() {
   useEffect(() => {
     if (!guardias.length || !canManage) return;
     const toFinalize = guardias.filter(g =>
-      (g.estado === 'activa' || g.estado === 'programada') && isPast(g)
+      g.estado !== 'finalizada' && g.estado !== 'cancelada' && isPast(g)
     );
     if (!toFinalize.length) return;
     Promise.all(toFinalize.map(g =>
@@ -351,6 +609,72 @@ export default function Guards() {
     [active, user]
   );
 
+  const uncoveredIn48h = useMemo(() => {
+    if (!isTech) return 0;
+    const now = new Date();
+    let count = 0;
+    for (let i = 0; i < 12; i++) {
+      const blockStart = new Date(now.getTime() + i * 4 * 3600000);
+      const blockEnd   = new Date(blockStart.getTime() + 4 * 3600000);
+      const covered = [...active, ...upcoming].some(g =>
+        new Date(g.inicio) < blockEnd && new Date(g.fin) > blockStart
+      );
+      if (!covered) count++;
+    }
+    return count;
+  }, [active, upcoming, isTech]);
+
+  const incidentsPerGuardia = useMemo(() => {
+    if (!incidents.length) return {};
+    const map = {};
+    guardias.forEach(g => {
+      if (!g.fin) return;
+      const start = new Date(g.inicio);
+      const end   = new Date(g.fin);
+      map[g.id] = incidents.filter(i => {
+        const d = new Date(i.created_date);
+        return d >= start && d <= end && i.assigned_to === g.tecnico_id;
+      });
+    });
+    return map;
+  }, [guardias, incidents]);
+
+  const techStats = useMemo(() => {
+    const map = {};
+    past.forEach(g => {
+      const incs = incidentsPerGuardia[g.id] || [];
+      if (!map[g.tecnico_id]) {
+        map[g.tecnico_id] = { name: g.tecnico_nombre, shifts: 0, totalIncs: 0, resolvedIncs: 0, totalMinutes: 0, minuteCount: 0 };
+      }
+      map[g.tecnico_id].shifts++;
+      map[g.tecnico_id].totalIncs += incs.length;
+      map[g.tecnico_id].resolvedIncs += incs.filter(i => i.status === 'Resuelto' || i.status === 'Cerrado').length;
+      incs.forEach(i => {
+        if (i.resolved_date && i.created_date) {
+          const mins = Math.round((new Date(i.resolved_date) - new Date(i.created_date)) / 60000);
+          if (mins > 0 && mins < 1440) {
+            map[g.tecnico_id].totalMinutes += mins;
+            map[g.tecnico_id].minuteCount++;
+          }
+        }
+      });
+    });
+    return Object.values(map)
+      .map(ts => ({ ...ts, avgMinutes: ts.minuteCount > 0 ? Math.round(ts.totalMinutes / ts.minuteCount) : 0 }))
+      .sort((a, b) => b.totalIncs - a.totalIncs);
+  }, [past, incidentsPerGuardia]);
+
+  const guardStatsTotal = useMemo(() => {
+    const total    = techStats.reduce((s, ts) => s + ts.totalIncs, 0);
+    const resolved = techStats.reduce((s, ts) => s + ts.resolvedIncs, 0);
+    return {
+      total,
+      resolved,
+      pct:         total > 0 ? Math.round(resolved / total * 100) : 0,
+      avgPerShift: past.length > 0 ? (total / past.length).toFixed(1) : '0',
+    };
+  }, [techStats, past]);
+
   const toggleSelect = (id) => setSelected(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -370,25 +694,38 @@ export default function Guards() {
     return sortDir === 'desc' ? -d : d;
   });
 
-  const handleBulkDelete = async () => {
-    if (!window.confirm(`¿Eliminar permanentemente ${selected.size} guardia(s) seleccionada(s)?`)) return;
-    await Promise.all([...selected].map(id => base44.entities.Guardia.delete(id)));
-    toast.success(`${selected.size} guardia(s) eliminadas`);
-    setSelected(new Set());
-    qc.invalidateQueries({ queryKey: ['guardias'] });
+  const handleBulkDelete = () => {
+    const count = selected.size;
+    setDlg({
+      open: true,
+      msg: `¿Eliminar permanentemente ${count} guardia(s) seleccionada(s)?`,
+      confirmLabel: 'Eliminar',
+      onOk: async () => {
+        await Promise.all([...selected].map(id => base44.entities.Guardia.delete(id)));
+        toast.success(`${count} guardia(s) eliminadas`);
+        setSelected(new Set());
+        qc.invalidateQueries({ queryKey: ['guardias'] });
+      },
+    });
   };
 
-  const handleCancel = async (g) => {
-    if (!window.confirm('¿Cancelar esta guardia?')) return;
-    await base44.entities.Guardia.update(g.id, { estado: 'cancelada' });
-    await base44.entities.Notification.create({
-      user_id: g.tecnico_id, type: 'status_change',
-      title: '🚫 Guardia cancelada',
-      message: `Tu guardia del ${new Date(g.inicio).toLocaleString('es')} fue cancelada.`,
-      is_read: false,
+  const handleCancel = (g) => {
+    setDlg({
+      open: true,
+      msg: '¿Cancelar esta guardia? Esta acción notificará al técnico asignado.',
+      confirmLabel: 'Cancelar guardia',
+      onOk: async () => {
+        await base44.entities.Guardia.update(g.id, { estado: 'cancelada' });
+        await base44.entities.Notification.create({
+          user_id: g.tecnico_id, type: 'status_change',
+          title: '🚫 Guardia cancelada',
+          message: `Tu guardia del ${new Date(g.inicio).toLocaleString('es')} fue cancelada.`,
+          is_read: false,
+        });
+        toast.success('Guardia cancelada');
+        refresh();
+      },
     });
-    toast.success('Guardia cancelada');
-    refresh();
   };
 
   const selectStyle = { background: 'hsl(222,47%,13%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
@@ -437,6 +774,13 @@ export default function Guards() {
             )}
             {g.observaciones && (
               <p className="text-xs mt-0.5 italic" style={{ color: muted }}>{g.observaciones}</p>
+            )}
+            {isTech && (incidentsPerGuardia[g.id]?.length > 0) && (
+              <span className="inline-flex items-center gap-1 text-[10px] mt-1 px-2 py-0.5 rounded-full"
+                style={{ background: 'hsl(217,60%,18%)', color: '#60a5fa' }}>
+                <BarChart2 className="w-2.5 h-2.5" />
+                {incidentsPerGuardia[g.id].length} incidencia{incidentsPerGuardia[g.id].length !== 1 ? 's' : ''} en turno
+              </span>
             )}
             <p className="text-[10px] mt-1" style={{ color: muted }}>
               Creado por {g.creada_por_nombre || g.creada_por} · {new Date(g.created_date).toLocaleDateString('es')}
@@ -487,6 +831,19 @@ export default function Guards() {
             <ArrowUpDown className="w-4 h-4" />
             {sortDir === 'desc' ? 'Más reciente primero' : 'Más antigua primero'}
           </button>
+          {isTech && uncoveredIn48h > 0 && (
+            <span className="text-[10px] px-2.5 py-1 rounded-full font-bold"
+              style={{ background: 'hsl(0,50%,20%)', color: '#f87171' }}>
+              ⚠ {uncoveredIn48h} bloque{uncoveredIn48h !== 1 ? 's' : ''} sin cubrir (48h)
+            </span>
+          )}
+          {isSupport && !myActive && (
+            <button onClick={() => setShowSelfAssign(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90"
+              style={{ background: 'hsl(142,33%,18%)', color: '#4ade80' }}>
+              <Shield className="w-4 h-4" /> Cubrirme
+            </button>
+          )}
           {canManage && (
             <>
               <button onClick={() => setShowPlanner(true)}
@@ -556,6 +913,67 @@ export default function Guards() {
               {canManage && ' Crea una guardia para el horario actual.'}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* ── Cobertura 24/7 (solo admin/tech) ── */}
+      {isTech && <CoverageHeatmap guardias={[...active, ...upcoming]} />}
+
+      {/* ── Estadísticas de incidencias en guardias ── */}
+      {isTech && past.length > 0 && (
+        <div className="rounded-xl p-4 space-y-3" style={cardStyle}>
+          <div className="flex items-center gap-2">
+            <BarChart2 className="w-4 h-4 text-blue-400" />
+            <h2 className="text-sm font-semibold text-white">Incidencias atendidas en guardias</h2>
+            <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto"
+              style={{ background: 'hsl(217,60%,18%)', color: '#60a5fa' }}>
+              {past.length} turno{past.length !== 1 ? 's' : ''} registrado{past.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg p-3 text-center" style={{ background: 'hsl(217,60%,14%)', border: '1px solid hsl(217,60%,22%)' }}>
+              <p className="text-xl font-bold text-white">{guardStatsTotal.total}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: muted }}>Total incidencias</p>
+            </div>
+            <div className="rounded-lg p-3 text-center" style={{ background: 'hsl(217,60%,14%)', border: '1px solid hsl(217,60%,22%)' }}>
+              <p className="text-xl font-bold text-white">{guardStatsTotal.avgPerShift}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: muted }}>Promedio / turno</p>
+            </div>
+            <div className="rounded-lg p-3 text-center" style={{ background: 'hsl(142,60%,12%)', border: '1px solid hsl(142,60%,22%)' }}>
+              <p className="text-xl font-bold text-green-400">{guardStatsTotal.pct}%</p>
+              <p className="text-[10px] mt-0.5" style={{ color: muted }}>Resueltas</p>
+            </div>
+          </div>
+          {techStats.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: muted }}>Rendimiento por técnico</p>
+              {techStats.map(ts => (
+                <div key={ts.name} className="flex items-center gap-3 rounded-lg px-3 py-2.5"
+                  style={{ background: 'hsl(217,33%,16%)', border: '1px solid hsl(217,33%,22%)' }}>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                    style={{ background: 'hsl(217,91%,25%)', color: '#60a5fa' }}>
+                    {(ts.name || '?')[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-white truncate">{ts.name}</p>
+                    <p className="text-[10px]" style={{ color: muted }}>
+                      {ts.shifts} turno{ts.shifts !== 1 ? 's' : ''} · {ts.resolvedIncs}/{ts.totalIncs} resueltas
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold" style={{ color: ts.totalIncs > 0 ? '#60a5fa' : muted }}>
+                      {ts.totalIncs}
+                    </p>
+                    {ts.avgMinutes > 0 && (
+                      <p className="text-[10px]" style={{ color: muted }}>
+                        ~{ts.avgMinutes < 60 ? `${ts.avgMinutes}m` : `${(ts.avgMinutes / 60).toFixed(1)}h`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -671,11 +1089,14 @@ export default function Guards() {
       )}
 
       {/* Modals */}
+      {showSelfAssign && (
+        <SelfAssignModal user={user} guardias={guardias} onClose={() => setShowSelfAssign(false)} onSaved={() => { setShowSelfAssign(false); refresh(); }} />
+      )}
       {showForm && (
-        <GuardiaForm techs={techs} user={user} onClose={() => setShowForm(false)} onSaved={refresh} />
+        <GuardiaForm techs={techs} user={user} guardias={guardias} onClose={() => setShowForm(false)} onSaved={refresh} />
       )}
       {editGuardia && (
-        <GuardiaForm guardia={editGuardia} techs={techs} user={user} onClose={() => setEditGuardia(null)} onSaved={refresh} />
+        <GuardiaForm guardia={editGuardia} techs={techs} user={user} guardias={guardias} onClose={() => setEditGuardia(null)} onSaved={refresh} />
       )}
       {replaceGuardia && (
         <ReplaceTechModal guardia={replaceGuardia} techs={techs} user={user}
@@ -686,6 +1107,13 @@ export default function Guards() {
           onClose={() => setShowPlanner(false)}
           onSaved={() => { setShowPlanner(false); refresh(); }} />
       )}
+      <ConfirmDialog
+        open={dlg.open}
+        message={dlg.msg}
+        confirmLabel={dlg.confirmLabel}
+        onConfirm={() => { const fn = dlg.onOk; setDlg({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null }); fn?.(); }}
+        onCancel={() => setDlg({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null })}
+      />
     </div>
   );
 }

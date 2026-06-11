@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import ScheduledReportModal from '../components/analisys/ScheduleReportModal';
 import { useAuth } from '@/lib/AuthContext';
+import { toast } from 'sonner';
 
 const cardStyle = { background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' };
 const selectStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
@@ -33,8 +34,15 @@ const REQUEST_TYPE_COLORS = {
   'Soporte Técnico': '#fb923c', 'Automatización': '#a3e635'
 };
 
+const escapeCsv = (v) => {
+  const s = v == null ? '' : String(v);
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? '"' + s.replace(/"/g, '""') + '"'
+    : s;
+};
+
 function exportCSV(filename, headers, rows) {
-  const lines = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))];
+  const lines = [headers.map(escapeCsv).join(','), ...rows.map(r => r.map(escapeCsv).join(','))];
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename + '.csv'; a.click();
@@ -43,6 +51,7 @@ function exportCSV(filename, headers, rows) {
 
 function exportTablePDF(title, headers, rows) {
   const win = window.open('', '_blank');
+  if (!win) { toast.error('El navegador bloqueó la ventana emergente. Permite ventanas emergentes e inténtalo de nuevo.'); return; }
   const th = headers.map(h => `<th style="padding:6px 10px;border:1px solid #ccc;background:#1e3a5f;color:white;font-size:12px">${h}</th>`).join('');
   const trs = rows.map(r =>
     `<tr>${r.map(v => `<td style="padding:5px 10px;border:1px solid #ddd;font-size:12px">${v}</td>`).join('')}</tr>`
@@ -214,7 +223,9 @@ function computeRequestScore(t) {
   const successRate = t.Asignadas > 0 ? (t.Finalizadas / t.Asignadas) * 100 : 0;
   const complexityBonus = Math.min(t.complexityScore / Math.max(t.Asignadas, 1) * 10, 30);
   const volumeScore = Math.min(t.Asignadas * 2, 30);
-  const speedScore = t.avgHrs !== '—' ? Math.max(0, 40 - parseFloat(t.avgHrs)) : 0;
+  let avgHrs = parseFloat(t.avgHrs);
+  if (isNaN(avgHrs)) avgHrs = 0;
+  const speedScore = t.avgHrs !== '—' ? Math.max(0, 40 - avgHrs) : 0;
   return Math.min(100, Math.round((successRate * 0.4) + complexityBonus + (volumeScore * 0.2) + (speedScore * 0.1)));
 }
 
@@ -224,7 +235,9 @@ function computeIncidentScore(inc) {
   const resolutionRate = (inc.Resueltas / inc.Asignadas) * 40;              // 40 pts max
   const volumeScore = Math.min(inc.Asignadas * 3, 25);                      // 25 pts max
   const criticalityScore = Math.min(inc.criticalityScore * 2, 20);          // 20 pts max
-  const speedScore = inc.avgHrs !== '—' ? Math.max(0, 15 - parseFloat(inc.avgHrs) * 0.5) : 0; // 15 pts max
+  let avgHrs = parseFloat(inc.avgHrs);
+  if (isNaN(avgHrs)) avgHrs = 0;
+  const speedScore = inc.avgHrs !== '—' ? Math.max(0, 15 - avgHrs * 0.5) : 0; // 15 pts max
   return Math.min(100, Math.round(resolutionRate + volumeScore + criticalityScore + speedScore));
 }
 
@@ -232,7 +245,9 @@ function computeIncidentScore(inc) {
 function computeScore(t) { return computeRequestScore(t); } // legacy alias
 
 export default function Analysis() {
-  const [periodFilter, setPeriodFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState('30d');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [techFilter, setTechFilter] = useState('all');
   const [showReportModal, setShowReportModal] = useState(false);
   const [activeTab, setActiveTab] = useState('solicitudes');
@@ -245,7 +260,7 @@ export default function Analysis() {
   });
   const { data: users = [] } = useQuery({
     queryKey: ['all-users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.filter({ is_active: true }),
     initialData: [],
   });
   const { data: incidents = [] } = useQuery({
@@ -276,25 +291,34 @@ export default function Analysis() {
 
   const techs = users.filter(u => u.role === 'admin' || u.role === 'support');
 
-  const periodFiltered = useMemo(() => {
-    let r = requests;
+  const applyPeriod = (items, dateField = 'created_date') => {
     const now = new Date();
-    if (periodFilter === '7d') r = r.filter(x => new Date(x.created_date) > new Date(now - 7 * 86400000));
-    if (periodFilter === '30d') r = r.filter(x => new Date(x.created_date) > new Date(now - 30 * 86400000));
-    if (periodFilter === '90d') r = r.filter(x => new Date(x.created_date) > new Date(now - 90 * 86400000));
+    if (periodFilter === 'hoy')   { const s = new Date(now.getFullYear(), now.getMonth(), now.getDate()); return items.filter(x => new Date(x[dateField]) >= s); }
+    if (periodFilter === '7d')    return items.filter(x => new Date(x[dateField]) > new Date(now - 7  * 86400000));
+    if (periodFilter === '30d')   return items.filter(x => new Date(x[dateField]) > new Date(now - 30 * 86400000));
+    if (periodFilter === '90d')   return items.filter(x => new Date(x[dateField]) > new Date(now - 90 * 86400000));
+    if (periodFilter === 'custom') {
+      const from = dateFrom ? new Date(dateFrom) : null;
+      const to   = dateTo   ? new Date(dateTo + 'T23:59:59') : null;
+      return items.filter(x => {
+        const d = new Date(x[dateField]);
+        return (!from || d >= from) && (!to || d <= to);
+      });
+    }
+    return items;
+  };
+
+  const periodFiltered = useMemo(() => {
+    let r = applyPeriod(requests);
     if (techFilter !== 'all') r = r.filter(x => x.assigned_to_id === techFilter);
     return r;
-  }, [requests, periodFilter, techFilter]);
+  }, [requests, periodFilter, dateFrom, dateTo, techFilter]);
 
   const incidentsPeriodFiltered = useMemo(() => {
-    let inc = incidents;
-    const now = new Date();
-    if (periodFilter === '7d') inc = inc.filter(x => new Date(x.created_date) > new Date(now - 7 * 86400000));
-    if (periodFilter === '30d') inc = inc.filter(x => new Date(x.created_date) > new Date(now - 30 * 86400000));
-    if (periodFilter === '90d') inc = inc.filter(x => new Date(x.created_date) > new Date(now - 90 * 86400000));
+    let inc = applyPeriod(incidents);
     if (techFilter !== 'all') inc = inc.filter(x => x.assigned_to === techFilter);
     return inc;
-  }, [incidents, periodFilter, techFilter]);
+  }, [incidents, periodFilter, dateFrom, dateTo, techFilter]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -359,7 +383,11 @@ export default function Analysis() {
       };
     });
 
-    return { total, finalizada, enProgreso, enRevision, pendiente, rechazada, vencidas, avgResolutionHrs, resolutionRate, activeTechs, avgPerTech, finishedPerTech, byPriority, byLevel, byRequestType, byStatus, byDept, weeklyTrend, dailyTrend };
+    const allTimeWithTime = requests.filter(r => r.status === 'Finalizado' && r.completion_date && r.created_date);
+    const allTimeAvgHrs = allTimeWithTime.length > 0
+      ? (allTimeWithTime.reduce((s, r) => s + (new Date(r.completion_date) - new Date(r.created_date)), 0) / allTimeWithTime.length / 3600000).toFixed(1)
+      : '—';
+    return { total, finalizada, enProgreso, enRevision, pendiente, rechazada, vencidas, avgResolutionHrs, allTimeAvgHrs, resolutionRate, activeTechs, avgPerTech, finishedPerTech, byPriority, byLevel, byRequestType, byStatus, byDept, weeklyTrend, dailyTrend };
   }, [periodFiltered, requests, techs]);
 
   // Rich tech productivity with complexity metrics
@@ -622,11 +650,24 @@ export default function Analysis() {
         <div className="flex gap-2 flex-wrap">
           <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer" style={selectStyle}>
-            <option value="all">Todos los tiempos</option>
+            <option value="hoy">Hoy</option>
             <option value="7d">Últimos 7 días</option>
             <option value="30d">Últimos 30 días</option>
-            <option value="90d">Últimos 90 días</option>
+            <option value="90d">Trimestre (90 días)</option>
+            <option value="all">Todos los tiempos</option>
+            <option value="custom">Rango personalizado…</option>
           </select>
+          {periodFilter === 'custom' && (
+            <>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer"
+                style={selectStyle} title="Desde" />
+              <span className="text-xs self-center" style={{ color: muted }}>—</span>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer"
+                style={selectStyle} title="Hasta" />
+            </>
+          )}
           <select value={techFilter} onChange={e => setTechFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer" style={selectStyle}>
             <option value="all">Todos los técnicos</option>
@@ -645,6 +686,76 @@ export default function Analysis() {
       {showReportModal && (
         <ScheduledReportModal onClose={() => setShowReportModal(false)} stats={stats} techProductivity={techProductivity} requests={periodFiltered} />
       )}
+
+      {/* Mi rendimiento — banner personal para técnicos */}
+      {user && (user.role === 'admin' || user.role === 'support') && (() => {
+        const me = techProductivity.find(t => t.email === user.email);
+        if (!me) return null;
+        const rate = me.Asignadas > 0 ? Math.round((me.Finalizadas / me.Asignadas) * 100) : 0;
+        const active = me['En Proceso'] + me['En Validación'] + me.Pendientes;
+        return (
+          <div className="rounded-xl p-4 flex flex-wrap items-center gap-4" style={{ background: 'hsl(217,60%,14%)', border: '1px solid hsl(217,60%,22%)' }}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg font-bold" style={{ background: 'hsl(217,91%,25%)', color: '#60a5fa' }}>
+                {(user.full_name || user.email).charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-white">Mi rendimiento</p>
+                <p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>{user.full_name || user.email}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4 text-center">
+              <div><p className="text-lg font-bold text-white">{active}</p><p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>Activas</p></div>
+              <div><p className="text-lg font-bold text-green-400">{me.Finalizadas}</p><p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>Finalizadas</p></div>
+              <div><p className={`text-lg font-bold ${rate >= 75 ? 'text-green-400' : rate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>{rate}%</p><p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>Tasa éxito</p></div>
+              <div><p className="text-lg font-bold text-blue-400">{me.avgHrs !== '—' ? `${me.avgHrs}h` : '—'}</p><p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>Prom. resolución</p></div>
+              {me.onTimeRate !== null && <div><p className="text-lg font-bold text-purple-400">{me.onTimeRate}%</p><p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>A tiempo</p></div>}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Carga activa por técnico */}
+      {techProductivity.length > 0 && (() => {
+        const active = techProductivity.map(t => ({
+          ...t,
+          activeCount: t['En Proceso'] + t['En Validación'] + t.Pendientes,
+        })).sort((a, b) => b.activeCount - a.activeCount);
+        const maxActive = Math.max(...active.map(t => t.activeCount), 1);
+        return (
+          <div className="rounded-xl p-4" style={{ background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Carga activa por técnico</p>
+                <p className="text-xs mt-0.5" style={{ color: muted }}>Solicitudes abiertas en este momento</p>
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              {active.map(t => {
+                const pct = maxActive > 0 ? (t.activeCount / maxActive) * 100 : 0;
+                const color = t.activeCount >= 8 ? '#f87171' : t.activeCount >= 5 ? '#fbbf24' : '#4ade80';
+                return (
+                  <div key={t.email} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium" style={{ color: 'hsl(215,20%,80%)' }}>{t.name}</span>
+                      <div className="flex items-center gap-2" style={{ color: muted }}>
+                        <span>{t['En Proceso']} proceso</span>
+                        <span>·</span>
+                        <span>{t['En Validación']} validación</span>
+                        <span>·</span>
+                        <span style={{ color, fontWeight: 600 }}>{t.activeCount} total</span>
+                      </div>
+                    </div>
+                    <div className="w-full rounded-full h-1.5" style={{ background: 'hsl(217,33%,20%)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tabs */}
       <div className="flex gap-6 border-b" style={{ borderColor: 'hsl(217,33%,18%)' }}>
@@ -838,7 +949,10 @@ export default function Analysis() {
               onClick={() => setKpiModal({ title: 'En Validación', items: periodFiltered.filter(r => r.status === 'En Validación'), type: 'revision' })} />
             <StatCard title="Rechazadas" value={stats.rechazada} icon={XCircle} iconColor="text-red-400" highlight="text-red-400"
               onClick={() => setKpiModal({ title: 'Rechazadas', items: periodFiltered.filter(r => r.status === 'Rechazado'), type: 'rechazada' })} />
-            <StatCard title="Tiempo prom. resolución" value={stats.avgResolutionHrs === '—' ? '—' : `${stats.avgResolutionHrs}h`} subtitle="Para finalizadas" icon={AlarmClock} iconColor="text-orange-400" />
+            <StatCard title="Tiempo prom. resolución"
+              value={stats.avgResolutionHrs !== '—' ? `${stats.avgResolutionHrs}h` : stats.allTimeAvgHrs !== '—' ? `${stats.allTimeAvgHrs}h` : '—'}
+              subtitle={stats.avgResolutionHrs === '—' && stats.allTimeAvgHrs !== '—' ? '⚠ Histórico global (sin datos en período)' : 'Para finalizadas'}
+              icon={AlarmClock} iconColor="text-orange-400" />
             <StatCard title="⚠ Vencidas" value={stats.vencidas} subtitle="Fecha compromiso expirada" icon={AlertTriangle} iconColor="text-orange-400" highlight={stats.vencidas > 0 ? 'text-orange-400' : 'text-white'}
               onClick={() => setKpiModal({ title: '⚠ Vencidas', items: periodFiltered.filter(r => r.estimated_due && new Date(r.estimated_due) < new Date() && !['Finalizado','Rechazado','Cancelado'].includes(r.status)), type: 'vencidas' })} />
           </div>

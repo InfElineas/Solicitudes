@@ -3,7 +3,19 @@
     "allow": [
       "Bash(grep -E '\\\\.\\(jsx|js\\)$')",
       "Bash(grep -E '\\\\.\\(json|js|html\\)$')",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(node -e ' *)",
+      "Bash(grep -E \"^\\(Edit3|ArrowUpDown|Bookmark|Repeat2|AtSign|PauseCircle|ToggleLeft|ToggleRight|ImageIcon|FileSpreadsheet\\)$\")",
+      "Bash(node -e \"const p = require\\('./node_modules/sonner/package.json'\\); console.log\\(p.version\\)\")",
+      "PowerShell($desktop = [Environment]::GetFolderPath\\(\"Desktop\"\\); Write-Host $desktop; Test-Path $desktop)",
+      "Bash(node \"C:\\\\Users\\\\infor\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\7744e199-c712-4a32-983f-f890f6ff9e71\\\\306f64ee-8d82-462b-8004-3dfcd85810ca\\\\skills\\\\docx\\\\manual.js\")",
+      "Bash(node \"C:\\\\Users\\\\infor\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\7744e199-c712-4a32-983f-f890f6ff9e71\\\\306f64ee-8d82-462b-8004-3dfcd85810ca\\\\skills\\\\docx\\\\scripts\\\\office\\\\validate.py\" \"C:\\\\Users\\\\infor\\\\OneDrive\\\\Desktop\\\\Manual_Usuario_Plataforma_Solicitudes.docx\")",
+      "Bash(python \"C:\\\\Users\\\\infor\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\7744e199-c712-4a32-983f-f890f6ff9e71\\\\306f64ee-8d82-462b-8004-3dfcd85810ca\\\\skills\\\\docx\\\\scripts\\\\office\\\\validate.py\" \"C:\\\\Users\\\\infor\\\\OneDrive\\\\Desktop\\\\Manual_Usuario_Plataforma_Solicitudes.docx\")",
+      "PowerShell(pip install defusedxml -q)",
+      "PowerShell(python \"C:\\\\Users\\\\infor\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\7744e199-c712-4a32-983f-f890f6ff9e71\\\\306f64ee-8d82-462b-8004-3dfcd85810ca\\\\skills\\\\docx\\\\scripts\\\\office\\\\validate.py\" \"C:\\\\Users\\\\infor\\\\OneDrive\\\\Desktop\\\\Manual_Usuario_Plataforma_Solicitudes.docx\" 2>&1)",
+      "Bash(xargs cat)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget"
     ]
   }
 }

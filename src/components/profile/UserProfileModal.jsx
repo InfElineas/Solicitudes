@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { supabase } from '@/api/supabaseClient';
 import { base44 } from '@/api/base44Client';
-import { Camera, Lock, Building2, Save, X, Eye, EyeOff } from 'lucide-react';
+import { Camera, Lock, Building2, Save, X, Eye, EyeOff, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 
 const inputCls = "w-full px-3 py-2 rounded-lg text-sm text-white outline-none focus:ring-2 focus:ring-blue-500";
@@ -10,8 +10,8 @@ const labelCls = "text-xs font-medium text-gray-400 mb-1 block";
 
 const AVATAR_COLORS = ['bg-pink-500', 'bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-orange-500', 'bg-cyan-500', 'bg-red-500', 'bg-yellow-500'];
 
-/** @param {{ user: any, departments?: any[], onClose: () => void, onSaved?: (updated: any) => void }} props */
-export default function UserProfileModal({ user, departments = [], onClose, onSaved }) {
+/** @param {{ user: any, departments?: any[], onClose: () => void, onSaved?: (updated: any) => void, onLogout?: () => void }} props */
+export default function UserProfileModal({ user, departments = [], onClose, onSaved, onLogout }) {
   const [tab, setTab] = useState('profile');
   const [name, setName] = useState(user?.display_name || user?.full_name || '');
   const [department, setDepartment] = useState(user?.department || '');
@@ -34,9 +34,11 @@ export default function UserProfileModal({ user, departments = [], onClose, onSa
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('Solo se permiten imágenes'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('El archivo no puede superar 5MB'); return; }
     setUploadingAvatar(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      if (!file_url) throw new Error('URL no retornada');
       setAvatarUrl(file_url);
       toast.success('Imagen cargada');
     } catch {
@@ -88,18 +90,23 @@ export default function UserProfileModal({ user, departments = [], onClose, onSa
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <div
-        className="rounded-xl w-full max-w-md shadow-2xl"
-        style={{ background: 'hsl(222,47%,13%)', border: '1px solid hsl(217,33%,22%)' }}
+        className="rounded-t-2xl sm:rounded-xl w-full max-w-md shadow-2xl overflow-y-auto"
+        style={{ background: 'hsl(222,47%,13%)', border: '1px solid hsl(217,33%,22%)', maxHeight: '92dvh' }}
         onClick={e => e.stopPropagation()}
       >
+        {/* Drag handle — mobile only */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+          <div className="w-10 h-1 rounded-full" style={{ background: 'hsl(217,33%,30%)' }} />
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b" style={{ borderColor: 'hsl(217,33%,22%)' }}>
+        <div className="flex items-center justify-between px-6 pt-3 sm:pt-5 pb-4 border-b" style={{ borderColor: 'hsl(217,33%,22%)' }}>
           <h3 className="text-base font-semibold text-white">Mi Perfil</h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
 
         {/* Avatar section */}
@@ -232,6 +239,20 @@ export default function UserProfileModal({ user, departments = [], onClose, onSa
             </div>
           )}
         </div>
+
+        {/* Cerrar sesión — acceso rápido en mobile */}
+        {onLogout && (
+          <div className="px-6 pb-5 pt-0 sm:hidden">
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-colors"
+              style={{ background: 'hsl(0,40%,18%)', color: '#fca5a5', border: '1px solid hsl(0,40%,28%)' }}
+            >
+              <LogOut className="w-4 h-4" />
+              Cerrar sesión
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

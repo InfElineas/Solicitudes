@@ -5,6 +5,8 @@ import { base44 } from '@/api/base44Client';
  * Evaluates all active rules against open requests and fires configured actions.
  */
 
+const h = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
 const TRIGGER_LABELS = {
   stale_48h: 'Sin actualización 48h',
   stale_24h: 'Sin actualización 24h',
@@ -12,6 +14,8 @@ const TRIGGER_LABELS = {
   due_soon_48h: 'Vence en 48h',
   high_priority_unassigned: 'Alta prioridad sin asignar',
   status_change: 'Cambio de estado',
+  sla_warning_80: 'SLA al 80% consumido',
+  stale_validation_3d: 'En Validación 3+ días sin respuesta',
 };
 
 const ACTION_LABELS = {
@@ -45,6 +49,19 @@ function matchesTrigger(req, trigger) {
       return dueDateMs && dueDateMs > now && (dueDateMs - now) <= 48 * 3600 * 1000;
     case 'high_priority_unassigned':
       return (req.priority === 'P1 — Crítica' || req.priority === 'P2 — Alta') && !req.assigned_to_id;
+    case 'status_change':
+      return (now - updatedAt) <= 15 * 60 * 1000;
+    case 'sla_warning_80': {
+      if (!req.estimated_due || !req.created_date) return false;
+      const totalMs = new Date(req.estimated_due) - new Date(req.created_date);
+      if (totalMs <= 0) return false;
+      const elapsedMs = now - new Date(req.created_date).getTime();
+      const pct = elapsedMs / totalMs;
+      // Fires when 80%+ elapsed but not yet due
+      return pct >= 0.8 && new Date(req.estimated_due).getTime() > now;
+    }
+    case 'stale_validation_3d':
+      return req.status === 'En Validación' && (now - updatedAt) >= 3 * 24 * 3600 * 1000;
     default:
       return false;
   }
@@ -72,9 +89,17 @@ async function executeAction(rule, req, user) {
       const to = cfg.email_to || req.requester_id || user?.email;
       const subject = cfg.subject || `[Solicitud] ${req.title}`;
       const body = cfg.message
-        ? cfg.message.replace('{{title}}', req.title).replace('{{status}}', req.status)
-        : `La solicitud "<strong>${req.title}</strong>" requiere tu atención.<br><br>Estado actual: <strong>${req.status}</strong><br>Prioridad: <strong>${req.priority}</strong>`;
-      await base44.integrations.Core.SendEmail({ to, subject, body });
+        ? cfg.message.replace('{{title}}', h(req.title)).replace('{{status}}', h(req.status))
+        : `La solicitud "<strong>${h(req.title)}</strong>" requiere tu atención.<br><br>Estado actual: <strong>${h(req.status)}</strong><br>Prioridad: <strong>${h(req.priority)}</strong>`;
+      try {
+        await base44.integrations.Core.SendEmail({ to, subject, body });
+        base44.entities.EmailLog.create({ to_email: to, subject, status: 'sent' }).catch(() => {});
+      } catch (emailErr) {
+        const msg = emailErr?.message || String(emailErr);
+        console.warn('[automationEngine] fallo al enviar email:', { to, subject, error: msg });
+        base44.entities.EmailLog.create({ to_email: to, subject, status: 'failed', error_message: msg }).catch(() => {});
+        throw emailErr;
+      }
       return `Email enviado a ${to}`;
     }
 

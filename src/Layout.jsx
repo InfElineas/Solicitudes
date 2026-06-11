@@ -4,21 +4,22 @@ import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import {
   FileText, BarChart2, Trash2, Users, Building2,
-  ChevronLeft, LogOut, Zap, AlertTriangle, Shield, Package, BookOpen, ShieldCheck, Menu,
+  ChevronLeft, LogOut, Zap, AlertTriangle, Shield, Package, BookOpen, ShieldCheck,
 } from 'lucide-react';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import UserProfileModal from '@/components/profile/UserProfileModal';
 import MobileBottomNav from '@/components/MobileBottomNav';
+import WelcomeModal from '@/components/WelcomeModal';
 
 const NAV = [
-  { name: 'Solicitudes',           path: '/Requests',        icon: FileText,    roles: ['admin', 'support', 'jefe'] },
+  { name: 'Solicitudes',           path: '/Requests',        icon: FileText,    roles: ['admin', 'support', 'jefe', 'auditor'] },
   { name: 'Mi historial',          path: '/UserHistory',     icon: FileText,    roles: ['employee'] },
-  { name: 'Incidencias',           path: '/Incidents',       icon: AlertTriangle, roles: ['admin', 'support', 'employee', 'jefe'] },
-  { name: 'Dashboard & Análisis',  path: '/Analysis',        icon: BarChart2,   roles: ['admin', 'support'] },
-  { name: 'Guardias',              path: '/Guards',           icon: Shield,      roles: ['admin', 'support'] },
-  { name: 'Activos',               path: '/Assets',           icon: Package,     roles: ['admin', 'support'] },
-  { name: 'Base de Conocimientos', path: '/KnowledgeBase',   icon: BookOpen,    roles: ['admin', 'support', 'employee', 'jefe'] },
-  { name: 'Auditoría',             path: '/AuditLog',        icon: ShieldCheck, roles: ['admin'] },
+  { name: 'Incidencias',           path: '/Incidents',       icon: AlertTriangle, roles: ['admin', 'support', 'employee', 'jefe', 'auditor'] },
+  { name: 'Dashboard & Análisis',  path: '/Analysis',        icon: BarChart2,   roles: ['admin', 'support', 'auditor'] },
+  { name: 'Guardias',              path: '/Guards',           icon: Shield,      roles: ['admin', 'support', 'auditor'] },
+  { name: 'Activos',               path: '/Assets',           icon: Package,     roles: ['admin', 'support', 'auditor'] },
+  { name: 'Base de Conocimientos', path: '/KnowledgeBase',   icon: BookOpen,    roles: ['admin', 'support', 'employee', 'jefe', 'auditor'] },
+  { name: 'Auditoría',             path: '/AuditLog',        icon: ShieldCheck, roles: ['admin', 'auditor'] },
   { name: 'Papelera',              path: '/Trash',            icon: Trash2,      roles: ['admin'] },
   { name: 'Usuarios',              path: '/ManageUsers',     icon: Users,       roles: ['admin'] },
   { name: 'Departamentos',         path: '/Departments',     icon: Building2,   roles: ['admin'] },
@@ -33,6 +34,7 @@ export default function Layout({ children, currentPageName }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   /** @type {[any[], import('react').Dispatch<import('react').SetStateAction<any[]>>]} */
   const [departments, setDepartments] = useState(/** @type {any[]} */ ([]));
   const location = useLocation();
@@ -40,6 +42,15 @@ export default function Layout({ children, currentPageName }) {
   useEffect(() => {
     base44.entities.Department.filter({ is_active: true }).then(setDepartments).catch(() => {});
   }, []);
+
+  // Mostrar bienvenida la primera vez que el usuario accede (por navegador)
+  useEffect(() => {
+    if (!user?.email) return;
+    const key = `welcome_seen_${user.email}`;
+    if (!localStorage.getItem(key)) {
+      setShowWelcome(true);
+    }
+  }, [user?.email]);
 
   const role = user?.role || 'employee';
   const navItems = NAV.filter(n => n.roles.includes(role));
@@ -58,6 +69,7 @@ export default function Layout({ children, currentPageName }) {
   const roleLabel = role === 'admin' ? 'Administrador'
     : role === 'support' ? 'Soporte'
     : role === 'jefe' ? 'Jefe de Depto.'
+    : role === 'auditor' ? 'Auditor'
     : 'Empleado';
 
   return (
@@ -161,29 +173,37 @@ export default function Layout({ children, currentPageName }) {
         {/* Header */}
         <header
           className="flex items-center justify-between px-3 sm:px-6 shrink-0 border-b"
-          style={{ height: 52, borderColor: 'hsl(217,33%,16%)', background: 'hsl(222,47%,9%)' }}
+          style={{ minHeight: 56, borderColor: 'hsl(217,33%,16%)', background: 'hsl(222,47%,9%)' }}
         >
           <div className="flex items-center gap-2">
-            {/* Hamburger — mobile only */}
-            <button
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors md:hidden"
-              onClick={() => setMobileOpen(o => !o)}
-            >
-              <Menu className="w-4 h-4" style={{ color: 'hsl(215,20%,65%)' }} />
-            </button>
             <span className="text-xs font-medium hidden sm:inline" style={{ color: 'hsl(215,20%,45%)' }}>PANEL</span>
             <span className="text-xs hidden sm:inline" style={{ color: 'hsl(217,33%,35%)' }}>/</span>
-            <span className="text-sm font-semibold text-white truncate max-w-[160px] sm:max-w-none">{currentNav?.name || currentPageName}</span>
+            <span className="text-sm font-semibold text-white truncate max-w-[200px] sm:max-w-none">{currentNav?.name || currentPageName}</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <NotificationBell user={user} />
+            {/* Acceso rápido al perfil — solo mobile */}
+            <button
+              onClick={() => setShowProfile(true)}
+              className="flex items-center justify-center rounded-full hover:bg-white/10 transition-colors md:hidden"
+              style={{ width: 44, height: 44 }}
+              title="Mi perfil"
+            >
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt="avatar" className="h-8 w-8 rounded-full object-cover" />
+              ) : (
+                <div className={`h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor}`}>
+                  {initials}
+                </div>
+              )}
+            </button>
             <button
               onClick={() => logout()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:bg-white/10 transition-colors"
-              style={{ color: 'hsl(215,20%,55%)' }}
+              className="flex items-center justify-center gap-1.5 px-3 rounded-lg text-xs hover:bg-white/10 transition-colors"
+              style={{ color: 'hsl(215,20%,55%)', height: 44 }}
               title="Cerrar sesión"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Salir</span>
             </button>
           </div>
@@ -202,9 +222,21 @@ export default function Layout({ children, currentPageName }) {
           user={user}
           departments={departments}
           onClose={() => setShowProfile(false)}
+          onLogout={logout}
           onSaved={(updated) => {
             updateUser(updated);
             setShowProfile(false);
+          }}
+        />
+      )}
+
+      {/* ── Welcome Modal (primer acceso) ── */}
+      {showWelcome && user && (
+        <WelcomeModal
+          user={user}
+          onClose={() => {
+            localStorage.setItem(`welcome_seen_${user.email}`, '1');
+            setShowWelcome(false);
           }}
         />
       )}

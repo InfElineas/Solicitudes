@@ -9,6 +9,10 @@
  */
 import { supabase } from './supabaseClient';
 
+// En producción no exponemos detalles de schema en consola
+const isDev = import.meta.env.DEV;
+const dbLog = isDev ? console.error : () => {};
+
 /** Retry a Supabase write up to `retries` times on transient network errors. */
 async function withRetry(fn, retries = 2, baseDelayMs = 800) {
   let lastErr;
@@ -49,6 +53,7 @@ const TABLE_MAP = {
   Guardia:         'guardias',
   Activo:          'activos',
   Incident:        'incidents',
+  EmailLog:        'email_logs',
 };
 
 function createEntityClient(tableName) {
@@ -82,7 +87,7 @@ function createEntityClient(tableName) {
 
       const { data, error } = await query;
       if (error) {
-        console.error(`[entityClient] ${tableName}.filter error:`, error.message);
+        dbLog(`[entityClient] ${tableName}.filter error:`, error.message);
         throw error;
       }
       return (data || []).filter(Boolean);
@@ -103,7 +108,7 @@ function createEntityClient(tableName) {
         .select()
         .single();
       if (error) {
-        console.error(`[entityClient] ${tableName}.create error:`, error.message);
+        dbLog(`[entityClient] ${tableName}.create error:`, error.message);
         throw error;
       }
       return data;
@@ -122,7 +127,7 @@ function createEntityClient(tableName) {
           .select()
           .maybeSingle();
         if (error) {
-          console.error(`[entityClient] ${tableName}.update error:`, error.message);
+          dbLog(`[entityClient] ${tableName}.update error:`, error.message);
           throw error;
         }
         return data;
@@ -136,7 +141,7 @@ function createEntityClient(tableName) {
           .delete()
           .eq('id', id);
         if (error) {
-          console.error(`[entityClient] ${tableName}.delete error:`, error.message);
+          dbLog(`[entityClient] ${tableName}.delete error:`, error.message);
           throw error;
         }
       });
@@ -162,7 +167,7 @@ function createEntityClient(tableName) {
         .insert(payload)
         .select();
       if (error) {
-        console.error(`[entityClient] ${tableName}.bulkCreate error:`, error.message);
+        dbLog(`[entityClient] ${tableName}.bulkCreate error:`, error.message);
         throw error;
       }
       return data || [];

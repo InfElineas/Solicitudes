@@ -86,20 +86,26 @@ export default function MonthlyPlanner({ techs, user, onClose, onSaved }) {
       };
     });
 
-    await base44.entities.Guardia.bulkCreate(guardias);
+    try {
+      await base44.entities.Guardia.bulkCreate(guardias);
 
-    // Notify tech
-    await base44.entities.Notification.create({
-      user_id: techId,
-      type: 'assigned',
-      title: '🛡️ Guardias programadas',
-      message: `Se programaron ${days.length} guardia(s) de ${tipo} para ti en ${new Date(year, month).toLocaleString('es', { month: 'long', year: 'numeric' })}.`,
-      is_read: false,
-    });
+      // Notify tech
+      await base44.entities.Notification.create({
+        user_id: techId,
+        type: 'assigned',
+        title: '🛡️ Guardias programadas',
+        message: `Se programaron ${days.length} guardia(s) de ${tipo} para ti en ${new Date(year, month).toLocaleString('es', { month: 'long', year: 'numeric' })}.`,
+        is_read: false,
+      });
 
-    setSaving(false);
-    toast.success(`${days.length} guardia(s) creada(s) correctamente`);
-    onSaved();
+      toast.success(`${days.length} guardia(s) creada(s) correctamente`);
+      onSaved();
+    } catch (err) {
+      console.error('[MonthlyPlanner] bulkCreate error:', err);
+      toast.error('Error al crear guardias. Algunas pueden no haberse guardado.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const monthName = new Date(year, month).toLocaleString('es', { month: 'long', year: 'numeric' });
@@ -167,10 +173,10 @@ export default function MonthlyPlanner({ techs, user, onClose, onSaved }) {
 
         {/* Month navigator */}
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => { const d = new Date(year, month - 1); setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDays(new Set()); }}
+          <button onClick={() => { const d = new Date(year, month - 1); setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDays(new Set()); setSelectedWeekdays(new Set()); }}
             className="p-1.5 rounded hover:bg-white/10"><ChevronLeft className="w-4 h-4 text-gray-400" /></button>
           <span className="text-sm font-semibold text-white capitalize">{monthName}</span>
-          <button onClick={() => { const d = new Date(year, month + 1); setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDays(new Set()); }}
+          <button onClick={() => { const d = new Date(year, month + 1); setYear(d.getFullYear()); setMonth(d.getMonth()); setSelectedDays(new Set()); setSelectedWeekdays(new Set()); }}
             className="p-1.5 rounded hover:bg-white/10"><ChevronRight className="w-4 h-4 text-gray-400" /></button>
         </div>
 
@@ -210,9 +216,9 @@ export default function MonthlyPlanner({ techs, user, onClose, onSaved }) {
 
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cancelar</button>
-          <button onClick={handleCreate} disabled={saving}
+          <button onClick={handleCreate} disabled={saving || computeTargetDays().length === 0}
             className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50"
-            style={{ background: 'hsl(217,91%,45%)' }}>
+            style={{ background: 'hsl(217,91%,45%)', opacity: (saving || computeTargetDays().length === 0) ? 0.5 : undefined }}>
             {saving ? 'Creando...' : `Crear ${computeTargetDays().length} guardia(s)`}
           </button>
         </div>

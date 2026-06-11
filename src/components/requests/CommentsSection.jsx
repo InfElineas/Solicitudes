@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Paperclip, Send, X, Loader2, ImageIcon, FileText, AtSign } from 'lucide-react';
 import { sendMentionEmail, extractMentions } from '@/services/emailNotifications';
+import { toast } from 'sonner';
 
 const AVATAR_COLORS = ['bg-pink-500', 'bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-orange-500', 'bg-cyan-500'];
 function avatarColor(str) { return AVATAR_COLORS[(str?.charCodeAt(0) || 0) % AVATAR_COLORS.length]; }
@@ -17,11 +18,12 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
   const [allUsersLocal, setAllUsersLocal] = useState(allUsers);
   const fileInputRef = useRef();
   const bottomRef = useRef();
+  const pollFailures = useRef(0);
 
   // Load all users once for mention detection
   useEffect(() => {
     if (allUsers.length === 0) {
-      base44.entities.User.list().then(setAllUsersLocal).catch(() => {});
+      base44.entities.User.filter({ is_active: true }).then(setAllUsersLocal).catch(() => {});
     }
   }, []);
 
@@ -36,7 +38,17 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
     // Poll every 15s for new comments
     const interval = setInterval(() => {
       base44.entities.RequestComment.filter({ request_id: requestId }, 'created_date')
-        .then(data => setComments(data)).catch(() => {});
+        .then(data => {
+          pollFailures.current = 0;
+          toast.dismiss('comments-stale');
+          setComments(data);
+        })
+        .catch(() => {
+          pollFailures.current += 1;
+          if (pollFailures.current >= 3) {
+            toast.warning('No se pueden cargar nuevos comentarios. Verifica tu conexión.', { id: 'comments-stale', duration: Infinity });
+          }
+        });
     }, 15000);
     return () => clearInterval(interval);
   }, [requestId]);
@@ -69,6 +81,7 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
   const removeFile = (idx) => setFiles(prev => prev.filter((_, i) => i !== idx));
 
   const handleSend = async () => {
+    if (sending) return;
     if (!text.trim() && files.length === 0) return;
     if (files.some(f => f.uploading)) return; // wait for uploads
     setSending(true);
@@ -78,46 +91,50 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
     let requestInfo = null;
     try { requestInfo = await base44.entities.Request.filter({ id: requestId }); requestInfo = requestInfo[0]; } catch {}
 
-    await base44.entities.RequestComment.create({
-      request_id: requestId,
-      content: text.trim(),
-      author_id: user?.email || '',
-      author_name: user?.full_name || user?.email || 'Anónimo',
-      file_urls: readyUrls,
-    });
+    try {
+      await base44.entities.RequestComment.create({
+        request_id: requestId,
+        content: text.trim(),
+        author_id: user?.email || '',
+        author_name: user?.full_name || user?.email || 'Anónimo',
+        file_urls: readyUrls,
+      });
 
-    // In-app notifications for involved users
-    if (requestInfo) {
-      const involved = [requestInfo.requester_id, requestInfo.assigned_to_id]
-        .filter(uid => uid && uid !== user?.email);
-      const uniqueInvolved = [...new Set(involved)];
-      await Promise.all(uniqueInvolved.map(uid =>
-        base44.entities.Notification.create({
-          user_id: uid,
-          type: 'comment',
-          title: '💬 Nuevo comentario en una solicitud',
-          message: `${user?.full_name || user?.email} comentó: "${text.trim().slice(0, 80)}${text.trim().length > 80 ? '...' : ''}"`,
-          request_id: requestId,
-          request_title: requestInfo.title,
-          is_read: false,
-        })
-      ));
+      // In-app notifications for involved users
+      if (requestInfo) {
+        const involved = [requestInfo.requester_id, requestInfo.assigned_to_id]
+          .filter(uid => uid && uid !== user?.email);
+        const uniqueInvolved = [...new Set(involved)];
+        await Promise.all(uniqueInvolved.map(uid =>
+          base44.entities.Notification.create({
+            user_id: uid,
+            type: 'comment',
+            title: '💬 Nuevo comentario en una solicitud',
+            message: `${user?.full_name || user?.email} comentó: "${text.trim().slice(0, 80)}${text.trim().length > 80 ? '...' : ''}"`,
+            request_id: requestId,
+            request_title: requestInfo.title,
+            is_read: false,
+          })
+        ));
 
-      // Email for @mentions
-      const mentionedUsers = extractMentions(text.trim(), allUsersLocal);
-      await Promise.all(mentionedUsers.map(mu =>
-        sendMentionEmail({
-          mentionedEmail: mu.email,
-          mentionedName: mu.full_name,
-          commenterName: user?.full_name || user?.email,
-          commentText: text.trim(),
-          request: requestInfo,
-        })
-      ));
+        // Email for @mentions
+        const mentionedUsers = extractMentions(text.trim(), allUsersLocal);
+        await Promise.all(mentionedUsers.map(mu =>
+          sendMentionEmail({
+            mentionedEmail: mu.email,
+            mentionedName: mu.full_name,
+            commenterName: user?.full_name || user?.email,
+            commentText: text.trim(),
+            request: requestInfo,
+          })
+        ));
+      }
+
+      setText('');
+      setFiles([]);
+    } catch {
+      toast.error('Error al enviar el comentario');
     }
-
-    setText('');
-    setFiles([]);
     setSending(false);
   };
 

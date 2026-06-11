@@ -47,7 +47,14 @@ export default function Login() {
     if (error) {
       setMessage({ type: 'error', text: error.message });
       setGoogleLoading(false);
+      return;
     }
+    // Si el usuario cierra el popup sin completar, la ventana recupera el foco → resetear estado
+    const onFocus = () => {
+      setGoogleLoading(false);
+      window.removeEventListener('focus', onFocus);
+    };
+    window.addEventListener('focus', onFocus);
     // Si ok, el browser redirige a Google → vuelve al origin y AuthContext detecta la sesión
   };
 
@@ -97,7 +104,7 @@ export default function Login() {
           {/* Divider */}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px" style={{ background: 'hsl(217,33%,22%)' }} />
-            <span className="text-xs" style={{ color: 'hsl(215,20%,40%)' }}>o usa tu email</span>
+            <span className="text-xs" style={{ color: 'hsl(215,20%,40%)' }}>o accede con cualquier correo</span>
             <div className="flex-1 h-px" style={{ background: 'hsl(217,33%,22%)' }} />
           </div>
 
@@ -132,11 +139,13 @@ export default function Login() {
                 Correo electrónico
               </label>
               <input
-                type="email"
+                type="text"
+                inputMode="email"
+                autoComplete="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@empresa.com"
+                placeholder="tu@mercadoelineas.com"
                 className="w-full px-3 py-2.5 text-sm rounded-lg outline-none"
                 style={{
                   background: 'hsl(222,47%,16%)',

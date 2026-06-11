@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
+import { toast } from 'sonner';
 
 const inputStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white' };
 const selectCls = "text-xs rounded-lg px-3 py-1.5 cursor-pointer outline-none focus:ring-1 focus:ring-blue-500";
@@ -15,7 +16,14 @@ const PRIORITIES = ['P1 — Crítica', 'P2 — Alta', 'P3 — Media', 'P4 — Ba
 export default function AdvancedFilters({ filters, onFiltersChange, departments = [], users = [], role = 'employee' }) {
   const [expanded, setExpanded] = useState(false);
 
-  const set = (k, v) => onFiltersChange({ ...filters, [k]: v === 'all' ? '' : v });
+  const set = (k, v) => {
+    const newVal = v === 'all' ? '' : v;
+    const next = { ...filters, [k]: newVal };
+    if (next.dateFrom && next.dateTo && next.dateFrom > next.dateTo) {
+      toast.warning('La fecha "desde" es mayor que "hasta"');
+    }
+    onFiltersChange(next);
+  };
 
   const activeCount = [
     filters.status, filters.dept, filters.request_type, filters.level,
@@ -28,7 +36,7 @@ export default function AdvancedFilters({ filters, onFiltersChange, departments 
     assigned: '', requester: '', priority: '', dateFrom: '', dateTo: '',
   });
 
-  const techUsers = users.filter(u => u.role === 'admin' || u.role === 'support');
+  const techUsers = users.filter(u => u.role === 'support' || u.department?.toLowerCase() === 'soporte');
 
   return (
     <div className="rounded-xl mb-4" style={{ background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' }}>
@@ -121,8 +129,8 @@ export default function AdvancedFilters({ filters, onFiltersChange, departments 
             </div>
           )}
 
-          {/* Assigned — admin/support/superadmin only */}
-          {(role === 'admin' || role === 'support') && (
+          {/* Assigned — admin/support/auditor/jefe */}
+          {(role === 'admin' || role === 'support' || role === 'auditor' || role === 'jefe') && (
             <div className="pt-3">
               <label className={labelCls} style={muted}>Asignado a</label>
               <select value={filters.assigned || 'all'} onChange={e => set('assigned', e.target.value)} className={`w-full ${selectCls}`} style={inputStyle}>

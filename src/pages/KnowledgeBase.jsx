@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Plus, Search, X, Edit3, Trash2, Eye, Tag } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { BookOpen, Plus, Search, X, Edit3, Trash2, Eye, Tag, Download, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 const cardStyle = { background: 'hsl(222,47%,12%)', border: '1px solid hsl(217,33%,18%)' };
@@ -23,14 +24,17 @@ const CAT_COLORS = {
   'Otro': '#94a3b8',
 };
 
-function ArticleForm({ article, user, onClose, onSaved }) {
+function ArticleForm({ article, initialData, user, onClose, onSaved }) {
   const isEdit = !!article;
+  const seed = article || initialData || {};
   const [form, setForm] = useState({
-    title: article?.title || '',
-    content: article?.content || '',
-    category: article?.category || 'Software',
-    tags: article?.tags?.join(', ') || '',
-    is_published: article?.is_published !== false,
+    title: seed.title || '',
+    content: seed.content || '',
+    category: seed.category || 'Software',
+    tags: seed.tags ? (Array.isArray(seed.tags) ? seed.tags.join(', ') : seed.tags) : '',
+    is_published: seed.is_published !== false,
+    symptom: seed.symptom || '',
+    cause: seed.cause || '',
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -38,21 +42,27 @@ function ArticleForm({ article, user, onClose, onSaved }) {
   const handleSave = async () => {
     if (!form.title.trim() || !form.content.trim()) { toast.error('Título y contenido son obligatorios'); return; }
     setSaving(true);
-    const payload = {
-      ...form,
-      tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-      author_id: user?.email,
-      author_name: user?.display_name || user?.full_name || user?.email,
-    };
-    if (isEdit) {
-      await base44.entities.KnowledgeBase.update(article.id, payload);
-      toast.success('Artículo actualizado');
-    } else {
-      await base44.entities.KnowledgeBase.create({ ...payload, views: 0 });
-      toast.success('Artículo creado');
+    try {
+      const payload = {
+        ...form,
+        tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        author_id: user?.email,
+        author_name: user?.display_name || user?.full_name || user?.email,
+      };
+      if (isEdit) {
+        await base44.entities.KnowledgeBase.update(article.id, payload);
+        toast.success('Artículo actualizado');
+      } else {
+        await base44.entities.KnowledgeBase.create({ ...payload, views: 0 });
+        toast.success('Artículo creado');
+      }
+      onSaved();
+    } catch (err) {
+      console.error('[KB] handleSave error:', err);
+      toast.error('Error al guardar el artículo. Inténtalo de nuevo.');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    onSaved();
   };
 
   return (
@@ -62,6 +72,13 @@ function ArticleForm({ article, user, onClose, onSaved }) {
           <h3 className="text-base font-semibold text-white">{isEdit ? 'Editar artículo' : 'Nuevo artículo'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
+        {!isEdit && initialData && (
+          <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+            style={{ background: 'hsl(217,60%,14%)', border: '1px solid hsl(217,60%,28%)', color: '#93c5fd' }}>
+            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            Creando artículo a partir de una incidencia resuelta. Revisa y completa el contenido antes de publicar.
+          </div>
+        )}
         <div className="space-y-3">
           <div>
             <label className={labelCls}>Título *</label>
@@ -80,8 +97,20 @@ function ArticleForm({ article, user, onClose, onSaved }) {
             </div>
           </div>
           <div>
-            <label className={labelCls}>Solución / Contenido *</label>
-            <textarea value={form.content} onChange={e => set('content', e.target.value)} rows={10}
+            <label className={labelCls}>Síntoma / Problema</label>
+            <textarea value={form.symptom} onChange={e => set('symptom', e.target.value)} rows={3}
+              className={inputCls + " resize-none"} style={inputStyle}
+              placeholder="¿Qué síntoma o error experimenta el usuario?" />
+          </div>
+          <div>
+            <label className={labelCls}>Causa raíz</label>
+            <textarea value={form.cause} onChange={e => set('cause', e.target.value)} rows={3}
+              className={inputCls + " resize-none"} style={inputStyle}
+              placeholder="¿Por qué ocurre el problema?" />
+          </div>
+          <div>
+            <label className={labelCls}>Solución / Pasos *</label>
+            <textarea value={form.content} onChange={e => set('content', e.target.value)} rows={8}
               className={inputCls + " resize-none"} style={inputStyle}
               placeholder="Describe los pasos de solución detalladamente..." />
           </div>
@@ -101,8 +130,46 @@ function ArticleForm({ article, user, onClose, onSaved }) {
   );
 }
 
+function VoteButtons({ article }) {
+  const qc = useQueryClient();
+  const key = `kb_vote_${article.id}`;
+  const [voted, setVoted] = React.useState(() => localStorage.getItem(key) || null);
+  const [counts, setCounts] = React.useState({ helpful: article.helpful_votes || 0, not_helpful: article.not_helpful_votes || 0 });
+
+  const handleVote = async (type) => {
+    if (voted) return;
+    const field = type === 'helpful' ? 'helpful_votes' : 'not_helpful_votes';
+    const newVal = (article[field] || 0) + 1;
+    setCounts(c => ({ ...c, [type === 'helpful' ? 'helpful' : 'not_helpful']: newVal }));
+    localStorage.setItem(key, type);
+    setVoted(type);
+    base44.entities.KnowledgeBase.update(article.id, { [field]: newVal })
+      .then(() => qc.invalidateQueries({ queryKey: ['knowledge-base'] }))
+      .catch(() => {});
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px]" style={{ color: 'hsl(215,20%,45%)' }}>¿Útil?</span>
+      <button onClick={() => handleVote('helpful')} disabled={!!voted}
+        className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-all hover:opacity-80 disabled:cursor-default"
+        style={{ background: voted === 'helpful' ? 'hsl(142,60%,18%)' : 'hsl(217,33%,22%)', color: voted === 'helpful' ? '#4ade80' : 'hsl(215,20%,65%)' }}>
+        <ThumbsUp className="w-3 h-3" /> {counts.helpful || ''}
+      </button>
+      <button onClick={() => handleVote('not_helpful')} disabled={!!voted}
+        className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-all hover:opacity-80 disabled:cursor-default"
+        style={{ background: voted === 'not_helpful' ? 'hsl(0,50%,18%)' : 'hsl(217,33%,22%)', color: voted === 'not_helpful' ? '#f87171' : 'hsl(215,20%,65%)' }}>
+        <ThumbsDown className="w-3 h-3" /> {counts.not_helpful || ''}
+      </button>
+    </div>
+  );
+}
+
 function ArticleModal({ article, onClose }) {
   useEffect(() => {
+    const key = 'kb_viewed_' + article.id;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
     base44.entities.KnowledgeBase.update(article.id, { views: (article.views || 0) + 1 }).catch(() => {});
   }, [article.id]);
 
@@ -128,15 +195,33 @@ function ArticleModal({ article, onClose }) {
             ))}
           </div>
         )}
-        <div className="prose prose-sm max-w-none">
-          <div className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed p-4 rounded-lg" style={{ background: 'hsl(222,47%,10%)' }}>
-            {article.content}
-          </div>
+        <div className="space-y-3">
+          {article.symptom && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'hsl(38,70%,55%)' }}>Síntoma</p>
+              <div className="text-sm text-white/80 whitespace-pre-wrap p-3 rounded-lg" style={{ background: 'hsl(222,47%,10%)' }}>{article.symptom}</div>
+            </div>
+          )}
+          {article.cause && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'hsl(270,60%,65%)' }}>Causa raíz</p>
+              <div className="text-sm text-white/80 whitespace-pre-wrap p-3 rounded-lg" style={{ background: 'hsl(222,47%,10%)' }}>{article.cause}</div>
+            </div>
+          )}
+          {article.content && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#4ade80' }}>Solución</p>
+              <div className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed p-4 rounded-lg" style={{ background: 'hsl(222,47%,10%)' }}>{article.content}</div>
+            </div>
+          )}
         </div>
-        <div className="flex justify-between items-center mt-4">
-          <span className="text-xs flex items-center gap-1" style={{ color: muted }}>
-            <Eye className="w-3 h-3" /> {article.views || 0} visualizaciones
-          </span>
+        <div className="flex items-center justify-between mt-4 flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xs flex items-center gap-1" style={{ color: muted }}>
+              <Eye className="w-3 h-3" /> {article.views || 0}
+            </span>
+            <VoteButtons article={article} />
+          </div>
           <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cerrar</button>
         </div>
       </div>
@@ -146,21 +231,50 @@ function ArticleModal({ article, onClose }) {
 
 export default function KnowledgeBase() {
   const [user, setUser] = useState(null);
-  const [search, setSearch] = useState('');
-  const [filterCat, setFilterCat] = useState('all');
+  const search      = searchParams.get('q') || '';
+  const filterCat   = searchParams.get('cat') || 'all';
+  const setSearch   = (val) => setSearchParams(p => { const n = new URLSearchParams(p); val ? n.set('q', val) : n.delete('q'); return n; });
+  const setFilterCat = (val) => setSearchParams(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('cat', val) : n.delete('cat'); return n; });
   const [showForm, setShowForm] = useState(false);
   const [editArticle, setEditArticle] = useState(null);
   const [viewArticle, setViewArticle] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [prefillArticle, setPrefillArticle] = useState(null);
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
-  const isStaff = user?.role === 'admin' || user?.role === 'support';
+  // Pre-fill from incident query params
+  useEffect(() => {
+    const title = searchParams.get('inc_title');
+    if (!title) return;
+    const category = searchParams.get('inc_category') || 'Otro';
+    const description = searchParams.get('inc_description') || '';
+    const resolution = searchParams.get('inc_resolution') || '';
+    const validCat = CATEGORIES.includes(category) ? category : 'Otro';
+    const prefill = {
+      title: `Solución: ${title}`,
+      category: validCat,
+      content: [
+        description ? `## Problema\n${description}` : '',
+        resolution ? `## Solución\n${resolution}` : '',
+      ].filter(Boolean).join('\n\n') || '',
+      tags: '',
+      is_published: true,
+    };
+    setPrefillArticle(prefill);
+    setShowForm(true);
+    // Limpiar params de la URL sin recargar
+    setSearchParams({}, { replace: true });
+  }, []);
+
+  const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role === 'auditor';
 
   const { data: articles = [], isLoading } = useQuery({
     queryKey: ['knowledge-base'],
-    queryFn: () => base44.entities.KnowledgeBase.list('-created_date', 200),
+    queryFn: () => base44.entities.KnowledgeBase.filter({ is_deleted: false }, '-created_date', 200),
   });
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['knowledge-base'] });
@@ -180,10 +294,18 @@ export default function KnowledgeBase() {
   }, [articles, search, filterCat, isStaff]);
 
   const handleDelete = async (id) => {
-    await base44.entities.KnowledgeBase.delete(id);
-    refresh();
-    setDeleteId(null);
-    toast.success('Artículo eliminado');
+    try {
+      await base44.entities.KnowledgeBase.update(id, {
+        is_deleted: true,
+        deleted_by_name: user?.full_name || user?.email || '',
+      });
+      refresh();
+      setDeleteId(null);
+      toast.success('Artículo movido a la papelera');
+    } catch (err) {
+      console.error('[KB] handleDelete error:', err);
+      toast.error('Error al mover a papelera');
+    }
   };
 
   const selectStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
@@ -198,13 +320,20 @@ export default function KnowledgeBase() {
           </h1>
           <p className="text-xs mt-0.5" style={{ color: muted }}>Soluciones a problemas técnicos frecuentes</p>
         </div>
-        {isStaff && (
-          <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
-            style={{ background: 'hsl(217,91%,45%)' }}>
-            <Plus className="w-4 h-4" /> Nuevo artículo
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <a href="/manual_usuario.pdf" download="Manual_Usuario_Plataforma_Solicitudes.pdf"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90"
+            style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
+            <Download className="w-4 h-4" /> Manual de usuario
+          </a>
+          {isStaff && (
+            <button onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
+              style={{ background: 'hsl(217,91%,45%)' }}>
+              <Plus className="w-4 h-4" /> Nuevo artículo
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -289,7 +418,12 @@ export default function KnowledgeBase() {
 
       {/* Modals */}
       {showForm && user && (
-        <ArticleForm user={user} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); refresh(); }} />
+        <ArticleForm
+          user={user}
+          initialData={prefillArticle}
+          onClose={() => { setShowForm(false); setPrefillArticle(null); }}
+          onSaved={() => { setShowForm(false); setPrefillArticle(null); refresh(); }}
+        />
       )}
       {editArticle && user && (
         <ArticleForm article={editArticle} user={user} onClose={() => setEditArticle(null)} onSaved={() => { setEditArticle(null); refresh(); }} />
@@ -300,11 +434,11 @@ export default function KnowledgeBase() {
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="rounded-xl p-6 w-full max-w-sm" style={modalStyle}>
-            <h3 className="text-base font-semibold text-white mb-2">¿Eliminar artículo?</h3>
-            <p className="text-sm text-gray-400 mb-4">Esta acción no puede deshacerse.</p>
+            <h3 className="text-base font-semibold text-white mb-2">¿Mover artículo a la papelera?</h3>
+            <p className="text-sm text-gray-400 mb-4">Podrás recuperarlo desde la sección Papelera.</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cancelar</button>
-              <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 text-sm rounded-lg text-white font-medium" style={{ background: 'hsl(0,70%,40%)' }}>Eliminar</button>
+              <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 text-sm rounded-lg text-white font-medium" style={{ background: 'hsl(38,70%,35%)' }}>Mover a papelera</button>
             </div>
           </div>
         </div>

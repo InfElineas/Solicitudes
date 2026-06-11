@@ -6,6 +6,15 @@ import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'r
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import Login from './pages/Login';
+import TrackRequest from './pages/TrackRequest';
+import TrackIncident from './pages/TrackIncident';
+import { usePresence } from '@/hooks/usePresence';
+
+const RequireRole = ({ allowed, children }) => {
+  const { user } = useAuth();
+  if (!allowed.includes(user?.role)) return <Navigate to="/" replace />;
+  return children;
+};
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -24,6 +33,7 @@ const LoadingScreen = () => (
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated, user } = useAuth();
   const location = useLocation();
+  usePresence(user?.email);
 
   if (isLoadingAuth) {
     return <LoadingScreen />;
@@ -54,17 +64,21 @@ const AuthenticatedApp = () => {
           <MainPage />
         </LayoutWrapper>
       } />
-      {Object.entries(Pages).map(([pageName, Page]) => (
-        <Route
-          key={pageName}
-          path={`/${pageName}`}
-          element={
-            <LayoutWrapper currentPageName={pageName}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
+      {Object.entries(Pages).map(([pageName, Page]) => {
+        const adminOnly = ['ManageUsers', 'Departments', 'AutomationRules'];
+        const adminAuditor = ['AuditLog', 'Trash'];
+        let element = (
+          <LayoutWrapper currentPageName={pageName}>
+            <Page />
+          </LayoutWrapper>
+        );
+        if (adminOnly.includes(pageName)) {
+          element = <RequireRole allowed={['admin']}>{element}</RequireRole>;
+        } else if (adminAuditor.includes(pageName)) {
+          element = <RequireRole allowed={['admin', 'auditor']}>{element}</RequireRole>;
+        }
+        return <Route key={pageName} path={`/${pageName}`} element={element} />;
+      })}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
@@ -75,7 +89,13 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <AuthenticatedApp />
+          <Routes>
+            {/* Rutas públicas — sin autenticación */}
+            <Route path="/track/:token" element={<TrackRequest />} />
+            <Route path="/track-incident/:token" element={<TrackIncident />} />
+            {/* Todo lo demás requiere auth */}
+            <Route path="*" element={<AuthenticatedApp />} />
+          </Routes>
         </Router>
         <Toaster />
       </QueryClientProvider>

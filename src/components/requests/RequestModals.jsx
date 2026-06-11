@@ -1,11 +1,32 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { toast } from 'sonner';
+
+// ── Indicador online ────────────────────────────────────────────────────────
+function OnlineDot({ lastSeen }) {
+  if (!lastSeen) return <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'hsl(217,33%,30%)' }} title="Sin datos de actividad" />;
+  const mins = (Date.now() - new Date(lastSeen)) / 60000;
+  if (mins < 15) return <span className="w-2 h-2 rounded-full inline-block bg-green-400 animate-pulse" title="Activo hace menos de 15 min" />;
+  if (mins < 60) return <span className="w-2 h-2 rounded-full inline-block bg-yellow-400" title={`Activo hace ${Math.round(mins)} min`} />;
+  return <span className="w-2 h-2 rounded-full inline-block" style={{ background: 'hsl(217,33%,35%)' }} title="Inactivo" />;
+}
+
+// ── Plantillas de solicitud ─────────────────────────────────────────────────
+const TEMPLATES = [
+  { label: '👤 Nueva cuenta',    request_type: 'Nueva Implementación', priority: 'P3 — Media',   title: 'Crear cuenta de acceso para ',  description: 'Solicito la creación de una nueva cuenta de acceso al sistema para el usuario indicado.' },
+  { label: '💻 Instalar software',request_type: 'Nueva Implementación', priority: 'P3 — Media',   title: 'Instalación de software: ',     description: 'Requiero la instalación del software en mi equipo de trabajo.' },
+  { label: '🔴 Error crítico',    request_type: 'Reparación / Bug',     priority: 'P1 — Crítica', title: 'Error en sistema: ',            description: 'El sistema presenta el siguiente error que impide continuar trabajando:\n\nDescripción del error:' },
+  { label: '🐢 Equipo lento',     request_type: 'Reparación / Bug',     priority: 'P2 — Alta',    title: 'Equipo con problemas de rendimiento', description: 'Mi equipo presenta lentitud severa o comportamiento anormal. Detalles:\n\nModelo de equipo:' },
+  { label: '🎓 Capacitación',     request_type: 'Capacitación',         priority: 'P4 — Baja',    title: 'Solicitud de capacitación: ',  description: 'Solicito capacitación en el uso de la herramienta/proceso indicado.' },
+  { label: '❓ Consulta técnica', request_type: 'Consulta o Asesoría',  priority: 'P4 — Baja',    title: 'Consulta: ',                   description: 'Requiero orientación técnica sobre el siguiente tema:\n\nConsulta específica:' },
+];
 import CommentsSection from './CommentsSection';
 import ChatSection from './ChatSection';
 import FileAttachmentPicker from './FileAttachmentPicker';
 import AttachmentsViewer from './AttachmentsViewer';
-import { sendAssignedEmail, sendRejectedEmail } from '@/services/emailNotifications';
+import { sendAssignedEmail, sendRejectedEmail, sendRequiereInfoEmail } from '@/services/emailNotifications';
 
 const inputCls = "w-full px-3 py-2 rounded-lg text-sm text-white outline-none focus:ring-2 focus:ring-blue-500";
 const inputStyle = { background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' };
@@ -54,11 +75,25 @@ function ModalWrapper({ title, subtitle, onClose, children, wide }) {
 export function RequestFormModal({ request, departments = [], onClose, onSaved, user }) {
   const isEdit = !!request;
   const role = user?.role || 'employee';
-  const canCreateRequest = role === 'jefe' || role === 'admin';
+  const isTechnical = role === 'admin' || role === 'support';
+  const canCreateRequest = role === 'jefe' || role === 'admin' || role === 'employee' || role === 'support';
+
+  // Mapa urgencia → prioridad para formulario simplificado
+  const URGENCY_MAP = { 'Normal': 'P3 — Media', 'Urgente': 'P2 — Alta', 'Crítico': 'P1 — Crítica' };
+
+  const ORIGINS = [
+    { value: 'WhatsApp',   icon: '💬', label: 'WhatsApp' },
+    { value: 'Presencial', icon: '🏢', label: 'Presencial' },
+    { value: 'Email',      icon: '📧', label: 'Email' },
+    { value: 'Web',        icon: '🌐', label: 'Web / Sistema' },
+  ];
+
   const [form, setForm] = useState({
     title: request?.title || '',
     description: request?.description || '',
     request_type: request?.request_type || '',
+    origin: request?.origin || '',
+    urgency: 'Normal', // solo formulario simplificado
     level: request?.level || '',
     estimated_hours: request?.estimated_hours ? String(request.estimated_hours) : '',
     estimated_due: request?.estimated_due ? request.estimated_due.slice(0, 16) : '',
@@ -70,6 +105,8 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
     (request?.file_urls || []).map(url => ({ name: url.split('/').pop(), url, uploading: false }))
   );
   const [saving, setSaving] = useState(false);
+  const [confirmed, setConfirmed] = useState(null); // { id, publicToken, title }
+  const [copiedConf, setCopiedConf] = useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -114,18 +151,28 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isEdit && !canCreateRequest) {
-      toast.error('Solo jefatura de departamento o administración puede crear solicitudes.');
+      toast.error('No tienes permiso para crear solicitudes.');
       return;
     }
     if (attachments.some(f => f.uploading)) return;
     setSaving(true);
     try {
       const readyUrls = attachments.filter(f => f.url).map(f => f.url);
+      // En modo simplificado (employee/jefe), mapear urgency → priority
+      const resolvedPriority = isTechnical ? form.priority : (URGENCY_MAP[form.urgency] || 'P3 — Media');
       const payload = {
-        ...form,
-        level: form.level || null,
-        estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
-        estimated_due: form.estimated_due || null,
+        title: form.title,
+        description: form.description,
+        request_type: form.request_type,
+        origin: form.origin || null,
+        priority: resolvedPriority,
+        department_ids: form.department_ids,
+        department_names: form.department_names,
+        ...(isTechnical && {
+          level: form.level || null,
+          estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
+          estimated_due: form.estimated_due || null,
+        }),
         file_urls: readyUrls,
       };
       if (isEdit) {
@@ -141,16 +188,25 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
             is_read: false,
           });
         }
+        onSaved();
       } else {
-        await base44.entities.Request.create({
+        const created = await base44.entities.Request.create({
           ...payload,
           status: 'Pendiente',
           is_deleted: false,
           requester_id: user?.email,
           requester_name: user?.full_name || user?.email,
         });
+        // Mostrar pantalla de confirmación con token público
+        setConfirmed({
+          id: created?.id || '',
+          publicToken: created?.public_token || '',
+          title: form.title,
+        });
+        setSaving(false);
+        onSaved(); // refresca la lista en background
+        return;
       }
-      onSaved();
     } catch (err) {
       console.error('[RequestFormModal] handleSubmit error:', err);
       toast.error('Error al guardar la solicitud. Inténtalo de nuevo.');
@@ -180,6 +236,8 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
 
   const handleTypeChange = (type) => {
     set('request_type', type);
+    // Priority auto-update is intentionally skipped on edit to avoid overwriting
+    // a manually set priority when the technician changes the type.
     if (TYPE_CONFIG[type] && !isEdit) {
       set('priority', TYPE_CONFIG[type].priority);
     }
@@ -187,55 +245,178 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
 
   const typeHint = TYPE_CONFIG[form.request_type]?.hint;
 
+  const applyTemplate = (tpl) => {
+    set('title', tpl.title);
+    set('description', tpl.description);
+    set('request_type', tpl.request_type);
+    set('priority', tpl.priority);
+  };
+
+  // Pantalla de confirmación post-creación
+  if (confirmed) {
+    const trackUrl = `${window.location.origin}/track/${confirmed.publicToken}`;
+    const copyTrackUrl = () => {
+      navigator.clipboard.writeText(trackUrl);
+      setCopiedConf(true);
+      setTimeout(() => setCopiedConf(false), 2000);
+    };
+    return (
+      <ModalWrapper title="¡Solicitud creada!" onClose={onClose}>
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl" style={{ background: 'hsl(142,60%,18%)' }}>✅</div>
+          <div>
+            <p className="text-white font-semibold text-base">{confirmed.title}</p>
+            <p className="text-xs mt-1" style={{ color: 'hsl(215,20%,55%)' }}>
+              Ticket <span className="font-mono font-bold text-white">#{confirmed.id.slice(-8).toUpperCase()}</span>
+            </p>
+          </div>
+          <p className="text-sm" style={{ color: 'hsl(215,20%,65%)' }}>
+            Tu solicitud fue registrada y está en cola. Puedes hacer seguimiento con el enlace público:
+          </p>
+          {confirmed.publicToken && (
+            <div className="w-full rounded-xl p-3 text-xs font-mono break-all" style={{ background: 'hsl(222,47%,18%)', color: '#60a5fa', border: '1px solid hsl(217,33%,28%)' }}>
+              {trackUrl}
+            </div>
+          )}
+          <div className="flex gap-2 w-full pt-1">
+            {confirmed.publicToken && (
+              <button onClick={copyTrackUrl} className="flex-1 py-2 rounded-lg text-sm font-medium transition-all" style={{ background: copiedConf ? 'hsl(142,60%,20%)' : 'hsl(217,33%,22%)', color: copiedConf ? '#4ade80' : 'hsl(215,20%,80%)' }}>
+                {copiedConf ? '✓ Enlace copiado' : '🔗 Copiar enlace'}
+              </button>
+            )}
+            <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm font-medium text-white" style={{ background: 'hsl(217,91%,50%)' }}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </ModalWrapper>
+    );
+  }
+
   return (
     <ModalWrapper title={isEdit ? 'Editar Solicitud' : 'Nueva Solicitud'} subtitle={isEdit ? 'Modifica los campos y guarda los cambios.' : 'Completa el formulario para crear la solicitud.'} onClose={onClose} wide>
+      {/* Plantillas rápidas — solo en modo crear */}
+      {!isEdit && (
+        <div className="mb-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'hsl(215,20%,45%)' }}>Plantillas rápidas</p>
+          <div className="flex flex-wrap gap-1.5">
+            {TEMPLATES.map(tpl => (
+              <button
+                key={tpl.label}
+                type="button"
+                onClick={() => applyTemplate(tpl)}
+                className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors hover:brightness-110"
+                style={{ background: 'hsl(217,33%,20%)', color: 'hsl(215,20%,75%)', border: '1px solid hsl(217,33%,30%)' }}
+              >
+                {tpl.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className={labelCls}>Título</label>
+          <label className={labelCls}>Título *</label>
           <input value={form.title} onChange={e => set('title', e.target.value)} required className={inputCls} style={inputStyle} placeholder="Título de la solicitud" />
         </div>
         <div>
-          <label className={labelCls}>Descripción</label>
+          <label className={labelCls}>Descripción *</label>
           <textarea value={form.description} onChange={e => set('description', e.target.value)} required rows={3} className={inputCls + ' resize-none'} style={inputStyle} placeholder="Describe la solicitud..." />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <label className={labelCls}>Tipo de solicitud *</label>
-            <select value={form.request_type} onChange={e => handleTypeChange(e.target.value)} required className={selectCls} style={inputStyle}>
-              <option value="">Seleccionar...</option>
-              {REQUEST_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-            {typeHint && (
-              <p className="text-xs mt-1 px-1" style={{ color: 'hsl(38,90%,60%)' }}>
-                ℹ️ {typeHint}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={labelCls}>Dificultad</label>
-            <select value={form.level} onChange={e => set('level', e.target.value)} className={selectCls} style={inputStyle}>
-              <option value="">Seleccionar</option>
-              {LEVELS.map(l => <option key={l}>{l}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>Horas estimadas</label>
-            <input type="number" min="0" step="0.5" value={form.estimated_hours} onChange={e => set('estimated_hours', e.target.value)} className={inputCls} style={inputStyle} placeholder="Ej: 4" />
-          </div>
-        </div>
         <div>
-          <label className={labelCls}>Prioridad</label>
-          <select value={form.priority} onChange={e => set('priority', e.target.value)} className={selectCls} style={inputStyle}>
-            {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+          <label className={labelCls}>Tipo de solicitud *</label>
+          <select value={form.request_type} onChange={e => handleTypeChange(e.target.value)} required className={selectCls} style={inputStyle}>
+            <option value="">Seleccionar...</option>
+            {REQUEST_TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
+          {typeHint && (
+            <p className="text-xs mt-1 px-1" style={{ color: 'hsl(38,90%,60%)' }}>
+              ℹ️ {typeHint}
+            </p>
+          )}
         </div>
+
+        {/* Formulario simplificado para employee/jefe */}
+        {!isTechnical && (
+          <div>
+            <label className={labelCls}>Urgencia</label>
+            <div className="flex gap-2 mt-1">
+              {['Normal', 'Urgente', 'Crítico'].map(u => {
+                const colors = { Normal: '#4ade80', Urgente: '#fbbf24', Crítico: '#f87171' };
+                const selected = form.urgency === u;
+                return (
+                  <button type="button" key={u} onClick={() => set('urgency', u)}
+                    className="flex-1 py-2 rounded-lg text-xs font-semibold border transition-all"
+                    style={{
+                      background: selected ? `${colors[u]}20` : 'transparent',
+                      borderColor: selected ? colors[u] : 'hsl(217,33%,28%)',
+                      color: selected ? colors[u] : 'hsl(215,20%,55%)',
+                    }}>
+                    {u}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] mt-1 px-1" style={{ color: 'hsl(215,20%,45%)' }}>
+              Urgencia → Prioridad: Normal = Media, Urgente = Alta, Crítico = Crítica
+            </p>
+          </div>
+        )}
+
+        {/* Campos técnicos solo para support/admin */}
+        {isTechnical && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Dificultad</label>
+                <select value={form.level} onChange={e => set('level', e.target.value)} className={selectCls} style={inputStyle}>
+                  <option value="">Seleccionar</option>
+                  {LEVELS.map(l => <option key={l}>{l}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Horas estimadas</label>
+                <input type="number" min="0" step="0.5" value={form.estimated_hours} onChange={e => set('estimated_hours', e.target.value)} className={inputCls} style={inputStyle} placeholder="Ej: 4" />
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Prioridad</label>
+              <select value={form.priority} onChange={e => set('priority', e.target.value)} className={selectCls} style={inputStyle}>
+                {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Fecha compromiso (opcional)</label>
+              <input type="datetime-local" value={form.estimated_due} onChange={e => set('estimated_due', e.target.value)} className={inputCls} style={inputStyle} />
+            </div>
+          </>
+        )}
+
+        {/* Origen — Regla 5 — visible en ambos modos */}
         <div>
-          <label className={labelCls}>Fecha compromiso (opcional)</label>
-          <input type="datetime-local" value={form.estimated_due} onChange={e => set('estimated_due', e.target.value)} className={inputCls} style={inputStyle} />
+          <label className={labelCls}>Canal de origen</label>
+          <div className="flex gap-2 mt-1">
+            {ORIGINS.map(o => {
+              const selected = form.origin === o.value;
+              return (
+                <button type="button" key={o.value} onClick={() => set('origin', selected ? '' : o.value)}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all flex flex-col items-center gap-0.5"
+                  style={{
+                    background: selected ? 'hsl(217,91%,25%)' : 'transparent',
+                    borderColor: selected ? 'hsl(217,91%,50%)' : 'hsl(217,33%,28%)',
+                    color: selected ? '#60a5fa' : 'hsl(215,20%,55%)',
+                  }}>
+                  <span>{o.icon}</span>
+                  <span>{o.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+
         {departments.length > 0 && (
           <div>
-            <label className={labelCls}>Departamentos</label>
+            <label className={labelCls}>Departamento</label>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {departments.map(d => {
                 const sel = form.department_ids.includes(d.id);
@@ -300,6 +481,7 @@ export function ClassifyModal({ request, onClose, onSaved, user }) {
           is_read: false,
         });
       }
+      toast.success(isReclassify ? 'Solicitud reclasificada' : 'Solicitud clasificada');
       onSaved();
     } catch (err) {
       console.error('[ClassifyModal] handleSave error:', err);
@@ -323,9 +505,10 @@ export function ClassifyModal({ request, onClose, onSaved, user }) {
         <div>
           <label className={labelCls}>Prioridad</label>
           <select value={priority} onChange={e => setPriority(e.target.value)} className={selectCls} style={inputStyle}>
-            <option>Alta</option>
-            <option>Media</option>
-            <option>Baja</option>
+            <option>P1 — Crítica</option>
+            <option>P2 — Alta</option>
+            <option>P3 — Media</option>
+            <option>P4 — Baja</option>
           </select>
         </div>
       </div>
@@ -340,13 +523,13 @@ export function ClassifyModal({ request, onClose, onSaved, user }) {
 }
 
 // ---- ASSIGN MODAL ----
-export function AssignModal({ request, users = [], onClose, onSaved }) {
+export function AssignModal({ request, users = [], onClose, onSaved, user }) {
   const [techId, setTechId] = useState(request?.assigned_to_id || '');
   const [hours, setHours] = useState(request?.estimated_hours ? String(request.estimated_hours) : '');
   const [due, setDue] = useState(request?.estimated_due ? request.estimated_due.slice(0, 16) : '');
   const [saving, setSaving] = useState(false);
   const isReassign = !!request?.assigned_to_id;
-  const techs = users.filter(u => u.role === 'admin' || u.role === 'support');
+  const techs = users.filter(u => u.role === 'support' || u.department?.toLowerCase() === 'soporte');
 
   const handleAssign = async () => {
     setSaving(true);
@@ -375,8 +558,8 @@ export function AssignModal({ request, users = [], onClose, onSaved }) {
           from_status: request.status,
           to_status: 'Pendiente',
           note: `Reasignada a ${tech?.full_name || techId}`,
-          by_user_id: request.assigned_to_id || '',
-          by_user_name: '',
+          by_user_id: user?.email || '',
+          by_user_name: user?.full_name || user?.email || '',
         });
       }
       if (techId) {
@@ -418,10 +601,36 @@ export function AssignModal({ request, users = [], onClose, onSaved }) {
       <div className="space-y-3 mb-4">
         <div>
           <label className={labelCls}>Técnico</label>
-          <select value={techId} onChange={e => setTechId(e.target.value)} className={selectCls} style={inputStyle}>
-            <option value="">Seleccionar...</option>
-            {techs.map(u => <option key={u.email} value={u.email}>{u.full_name || u.email}</option>)}
-          </select>
+          <div className="space-y-1">
+            {techs.map(u => {
+              const isSelected = techId === u.email;
+              const mins = u.last_seen_at ? (Date.now() - new Date(u.last_seen_at)) / 60000 : null;
+              const onlineStatus = mins === null ? 'unknown' : mins < 15 ? 'online' : mins < 60 ? 'away' : 'offline';
+              return (
+                <button
+                  key={u.email}
+                  type="button"
+                  onClick={() => setTechId(u.email)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left transition-colors"
+                  style={{
+                    background: isSelected ? 'hsl(217,60%,22%)' : 'hsl(222,47%,16%)',
+                    border: `1px solid ${isSelected ? 'hsl(217,91%,45%)' : 'hsl(217,33%,24%)'}`,
+                    color: 'white',
+                  }}
+                >
+                  <OnlineDot lastSeen={u.last_seen_at} />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium block truncate">{u.full_name || u.display_name || u.email}</span>
+                    {u.department && <span className="text-[10px] block truncate" style={{ color: 'hsl(215,20%,50%)' }}>{u.department}</span>}
+                  </div>
+                  <span className="text-[10px]" style={{ color: onlineStatus === 'online' ? '#4ade80' : onlineStatus === 'away' ? '#fbbf24' : 'hsl(215,20%,40%)' }}>
+                    {onlineStatus === 'online' ? 'Activo' : onlineStatus === 'away' ? `${Math.round(mins)}m` : 'Sin actividad'}
+                  </span>
+                  {isSelected && <span className="text-blue-400 text-xs">✓</span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -453,18 +662,15 @@ export function RejectModal({ request, onClose, onSaved, user }) {
     if (!reason.trim()) return;
     setSaving(true);
     try {
-      await base44.entities.Request.update(request.id, {
-        status: 'Rechazado',
-        rejection_reason: reason,
+      const { error: rejectError } = await supabase.rpc('record_status_change', {
+        p_request_id:       request.id,
+        p_to_status:        'Rechazado',
+        p_note:             reason,
+        p_by_user_id:       user?.email || '',
+        p_by_user_name:     user?.full_name || user?.email || '',
+        p_rejection_reason: reason,
       });
-      await base44.entities.RequestHistory.create({
-        request_id: request.id,
-        from_status: request.status,
-        to_status: 'Rechazado',
-        note: reason,
-        by_user_id: user?.email,
-        by_user_name: user?.full_name || user?.email,
-      });
+      if (rejectError) throw rejectError;
       if (request.requester_id) {
         await base44.entities.Notification.create({
           user_id: request.requester_id,
@@ -475,8 +681,9 @@ export function RejectModal({ request, onClose, onSaved, user }) {
           request_title: request.title,
           is_read: false,
         });
-        sendRejectedEmail(request, reason);
+        sendRejectedEmail(request, reason).catch(e => console.warn('[RequestModals] reject email error:', e));
       }
+      toast.success('Solicitud rechazada');
       onSaved();
     } catch (err) {
       console.error('[RejectModal] handleReject error:', err);
@@ -504,11 +711,140 @@ export function RejectModal({ request, onClose, onSaved, user }) {
 }
 
 // ---- DETAIL MODAL ----
+// Ciclo de vida \u2014 Regla 4
+const LIFECYCLE_STEPS = [
+  { key: 'Pendiente',            color: '#9ca3af', icon: '\u23f3' },
+  { key: 'En Proceso',           color: '#60a5fa', icon: '\ud83d\udd27' },
+  { key: 'En Validaci\u00f3n',        color: '#c084fc', icon: '\ud83d\udd0d' },
+  { key: 'Finalizado',           color: '#4ade80', icon: '\u2705' },
+];
+const TERMINAL_STEPS = {
+  'Cancelado': { color: '#6b7280', icon: '\ud83d\udeab' },
+  'Rechazado': { color: '#fb7185', icon: '\u274c' },
+  'Retrasado': { color: '#f87171', icon: '\u26a0\ufe0f' },
+};
+const ORIGIN_ICONS = { WhatsApp: '\ud83d\udcac', Presencial: '\ud83c\udfe2', Email: '\ud83d\udce7', Web: '\ud83c\udf10' };
+
+function LifecycleBar({ status, history }) {
+  const isClosed = status === 'Cancelado' || status === 'Rechazado';
+  const activeIdx = LIFECYCLE_STEPS.findIndex(s => s.key === status);
+  const isRetrasado = status === 'Retrasado';
+
+  // Fechas por paso desde historial
+  const dateByStatus = {};
+  history.forEach(h => {
+    if (!dateByStatus[h.to_status]) dateByStatus[h.to_status] = h.created_date;
+  });
+
+  if (isClosed) {
+    const cfg = TERMINAL_STEPS[status];
+    return (
+      <div className="rounded-xl p-3 mb-3 flex items-center gap-3"
+        style={{ background: `${cfg.color}15`, border: `1px solid ${cfg.color}40` }}>
+        <span className="text-xl">{cfg.icon}</span>
+        <div>
+          <p className="text-sm font-semibold" style={{ color: cfg.color }}>{status}</p>
+          {dateByStatus[status] && (
+            <p className="text-[10px] mt-0.5" style={{ color: 'hsl(215,20%,50%)' }}>
+              {new Date(dateByStatus[status]).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium' })}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl p-3 mb-3" style={{ background: 'hsl(222,47%,16%)', border: '1px solid hsl(217,33%,22%)' }}>
+      <p className="text-[10px] font-semibold mb-2 uppercase tracking-wider" style={{ color: 'hsl(215,20%,45%)' }}>Ciclo de vida</p>
+      <div className="flex items-start gap-0">
+        {LIFECYCLE_STEPS.map((step, i) => {
+          const done    = activeIdx > i;
+          const active  = activeIdx === i || (isRetrasado && step.key === 'En Proceso');
+          const pending = !done && !active;
+          const color   = done || active ? step.color : '#374151';
+          const date    = dateByStatus[step.key];
+          return (
+            <React.Fragment key={step.key}>
+              <div className="flex flex-col items-center" style={{ flex: 1, minWidth: 0 }}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-all"
+                  style={{
+                    background: done ? `${step.color}30` : active ? `${step.color}20` : '#1f2937',
+                    border: `2px solid ${color}`,
+                    boxShadow: active ? `0 0 8px ${step.color}60` : undefined,
+                  }}>
+                  {done ? '\u2713' : <span style={{ fontSize: 13 }}>{step.icon}</span>}
+                </div>
+                <span className="text-[9px] mt-1 text-center leading-tight px-0.5" style={{ color: done || active ? '#e5e7eb' : '#4b5563' }}>
+                  {step.key}
+                </span>
+                {date && (done || active) && (
+                  <span className="text-[8px] text-center leading-tight" style={{ color: 'hsl(215,20%,45%)' }}>
+                    {new Date(date).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: '2-digit', month: 'short' })}
+                  </span>
+                )}
+                {isRetrasado && step.key === 'En Proceso' && (
+                  <span className="text-[8px] font-bold" style={{ color: '#f87171' }}>\u26a0 Retrasado</span>
+                )}
+              </div>
+              {i < LIFECYCLE_STEPS.length - 1 && (
+                <div className="h-0.5 flex-1 mx-0.5 mt-3.5 shrink-0 transition-all"
+                  style={{ background: done ? step.color : '#1f2937' }} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function DetailModal({ request, history = [], worklogs = [], onClose, user }) {
   const [tab, setTab] = useState('resumen');
+  const [wlHours, setWlHours] = useState('');
+  const [wlDesc, setWlDesc]   = useState('');
+  const [wlSaving, setWlSaving] = useState(false);
+  const queryClient = useQueryClient();
+  const canManage = user?.role === 'admin' || user?.role === 'support';
+
+  const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }) : '\u2014';
+  const fmtDateOnly = (d) => d ? new Date(d).toLocaleDateString('es-MX', {
+    timeZone: 'America/Mexico_City',
+    dateStyle: 'medium',
+  }) : '\u2014';
+
+  const handleAddWorklog = async (e) => {
+    e.preventDefault();
+    if (!wlHours || !wlDesc.trim()) return;
+    setWlSaving(true);
+    try {
+      await base44.entities.RequestWorkLog.create({
+        request_id: request.id,
+        user_id: user?.email,
+        user_name: user?.full_name || user?.display_name || user?.email,
+        hours: parseFloat(wlHours),
+        description: wlDesc.trim(),
+        logged_at: new Date().toISOString(),
+      });
+      queryClient.invalidateQueries({ queryKey: ['worklogs', request.id] });
+      toast.success('Tiempo registrado');
+      setWlHours('');
+      setWlDesc('');
+    } catch (err) {
+      console.error('[DetailModal] worklog error:', err);
+      toast.error('Error al registrar tiempo.');
+    } finally {
+      setWlSaving(false);
+    }
+  };
+
   const normalizeStatus = (s = '') => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
   const extractLinks = (text = '') => (text.match(/https?:\/\/[^\s|)]+/g) || []);
-  const evidenceHistory = history.filter(h => normalizeStatus(h?.to_status) === 'en revision');
+  const evidenceHistory = history.filter(h => normalizeStatus(h?.to_status) === 'en validacion');
 
   const tabs = [
     { key: 'resumen', label: 'Resumen' },
@@ -530,7 +866,7 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
           <StatusPill s={request.status} />
         </div>
         <p className="text-xs" style={{ color: 'hsl(215,20%,55%)' }}>
-          {request.requester_name} • {request.department_names?.join(', ') || '—'} • {request.created_date ? new Date(request.created_date).toLocaleString('es') : '—'}
+          {request.requester_name} • {request.department_names?.join(', ') || '—'} • {fmtDate(request.created_date)}
         </p>
       </div>
 
@@ -547,13 +883,16 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
       </div>
 
       {tab === 'resumen' && (
+        <div>
+        <LifecycleBar status={request.status} history={history} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
           {[
             ['Tipo', request.request_type || '—'],
+            ['Origen', request.origin ? `${ORIGIN_ICONS[request.origin] || ''} ${request.origin}` : '—'],
             ['Dificultad', request.level || '—'],
             ['Asignado a', request.assigned_to_name || '—'],
-            ['Compromiso', request.estimated_due ? new Date(request.estimated_due).toLocaleDateString('es') : '—'],
-            ['Estimado (h)', request.estimated_hours ?? '—'],
+            ['Compromiso', fmtDateOnly(request.estimated_due)],
+            ['Estimado (h)', request.estimated_hours != null ? request.estimated_hours + 'h' : '—'],
             ['Tiempo real (h)', request.actual_hours != null ? `${request.actual_hours}h` : request.started_at ? `En progreso` : '—'],
           ].map(([k, v]) => (
             <div key={k} className="rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
@@ -570,7 +909,7 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
           {request.approved_at && (
             <div className="rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
               <span className="block text-xs mb-0.5" style={{ color: 'hsl(215,20%,55%)' }}>Fecha aprobación</span>
-              <span className="font-semibold text-white">{new Date(request.approved_at).toLocaleString('es')}</span>
+              <span className="font-semibold text-white">{fmtDate(request.approved_at)}</span>
             </div>
           )}
           <div className="sm:col-span-2 rounded-lg px-3 py-2" style={{ background: 'hsl(222,47%,17%)' }}>
@@ -597,16 +936,17 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
                     </p>
                     {h.note && <p className="text-gray-400 mt-0.5">{h.note}</p>}
                     <p className="text-[11px] mt-0.5" style={{ color: 'hsl(215,20%,45%)' }}>
-                      {h.by_user_name || 'Sistema'} · {h.created_date ? new Date(h.created_date).toLocaleString('es') : '—'}
+                      {h.by_user_name || 'Sistema'} · {fmtDate(h.created_date)}
                     </p>
                   </div>
                 ))}
                 {history.length > 5 && (
-                  <p className="text-[11px] text-blue-300">Ver pestaña “Historial” para el detalle completo.</p>
+                  <p className="text-[11px] text-blue-300">{"Ver pestaña \"Historial\" para el detalle completo."}</p>
                 )}
               </div>
             )}
           </div>
+        </div>
         </div>
       )}
 
@@ -621,7 +961,7 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
                 <span className="text-gray-400">{h.from_status ? `${h.from_status} → ` : ''}</span>
                 <span className="text-white font-medium">{h.to_status}</span>
                 {h.note && <p className="text-gray-400 mt-0.5">{h.note}</p>}
-                <p className="text-gray-500 mt-0.5">{h.by_user_name} · {new Date(h.created_date).toLocaleString('es')}</p>
+                <p className="text-gray-500 mt-0.5">{h.by_user_name} · {fmtDate(h.created_date)}</p>
               </div>
             </div>
           ))}
@@ -701,6 +1041,95 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
 
       <div className="flex justify-end mt-4">
         <button onClick={onClose} className="px-5 py-2.5 text-sm rounded-lg text-gray-300 hover:bg-white/10 font-medium">Cerrar</button>
+      </div>
+    </ModalWrapper>
+  );
+}
+
+// ---- BLOCKED MODAL ----
+const BLOCKED_CFG = {
+  'En Espera':            { color: '#fbbf24', bg: 'hsl(38,80%,28%)',  icon: '⏸',  placeholder: 'Ej: Esperando respuesta del proveedor, pendiente de aprobación de área...' },
+  'Requiere Información': { color: '#fb923c', bg: 'hsl(25,80%,28%)',  icon: '⚠️', placeholder: 'Ej: El solicitante necesita especificar los equipos afectados, credenciales, etc.' },
+  'Retrasado':            { color: '#f87171', bg: 'hsl(0,60%,32%)',   icon: '🕐', placeholder: 'Ej: Bloqueado por dependencia externa, recurso no disponible, revisión de terceros...' },
+};
+
+export function BlockedModal({ request, targetStatus, user, onClose, onSaved }) {
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const cfg = BLOCKED_CFG[targetStatus] || BLOCKED_CFG['En Espera'];
+
+  const handleSave = async () => {
+    if (!reason.trim()) return;
+    setSaving(true);
+    try {
+      const { error: blockedError } = await supabase.rpc('record_status_change', {
+        p_request_id:   request.id,
+        p_to_status:    targetStatus,
+        p_note:         reason.trim(),
+        p_by_user_id:   user?.email || '',
+        p_by_user_name: user?.full_name || user?.email || '',
+      });
+      if (blockedError) throw blockedError;
+      if (request.requester_id && request.requester_id !== user?.email) {
+        const notifTitle = {
+          'En Espera': '⏸ Tu solicitud está en espera',
+          'Requiere Información': '⚠️ Tu solicitud requiere información',
+          'Retrasado': '🕐 Tu solicitud se marcó como retrasada',
+        }[targetStatus] || `Estado: ${targetStatus}`;
+        await base44.entities.Notification.create({
+          user_id: request.requester_id,
+          type: 'status_change',
+          title: notifTitle,
+          message: `La solicitud "${request.title}" cambió a "${targetStatus}". Motivo: ${reason}`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        });
+      }
+      if (targetStatus === 'Requiere Información') {
+        sendRequiereInfoEmail({ ...request, status: 'Requiere Información' }).catch(() => {});
+      }
+      toast.success(`Solicitud marcada como "${targetStatus}"`);
+      onSaved();
+    } catch (err) {
+      console.error('[BlockedModal] handleSave error:', err);
+      toast.error('Error al cambiar estado. Inténtalo de nuevo.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ModalWrapper title={`${cfg.icon} Registrar causa — ${targetStatus}`} subtitle="El motivo queda registrado en el historial de la solicitud" onClose={onClose}>
+      <div className="space-y-3 mb-4">
+        <div className="rounded-lg p-3" style={{ background: `${cfg.color}15`, border: `1px solid ${cfg.color}35` }}>
+          <p className="text-xs font-semibold text-white">{request.title}</p>
+          <p className="text-[10px] mt-0.5" style={{ color: 'hsl(215,20%,55%)' }}>
+            {request.status} → <span style={{ color: cfg.color }}>{targetStatus}</span>
+          </p>
+        </div>
+        <div>
+          <label className={labelCls}>Motivo del estancamiento *</label>
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            rows={3}
+            required
+            className={inputCls + ' resize-none'}
+            style={inputStyle}
+            placeholder={cfg.placeholder}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cancelar</button>
+        <button
+          onClick={handleSave}
+          disabled={saving || !reason.trim()}
+          className="px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50"
+          style={{ background: cfg.bg }}
+        >
+          {saving ? '...' : 'Confirmar'}
+        </button>
       </div>
     </ModalWrapper>
   );

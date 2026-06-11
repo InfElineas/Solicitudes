@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Play, Plus, Trash2, ToggleLeft, ToggleRight, Zap, Clock, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { toast } from 'sonner';
 import { runAutomationEngine, TRIGGER_LABELS, ACTION_LABELS } from '../services/automationEngine';
 import RuleFormModal from '../components/automation/RuleFormModal';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 
 const cardStyle = { background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' };
 const muted = 'hsl(215,20%,55%)';
@@ -21,6 +23,7 @@ export default function AutomationRules() {
   const [showNew, setShowNew] = useState(false);
   const [editRule, setEditRule] = useState(null);
   const [showLogs, setShowLogs] = useState(false);
+  const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
   const qc = useQueryClient();
 
   React.useEffect(() => {
@@ -50,14 +53,28 @@ export default function AutomationRules() {
   };
 
   const toggleRule = async (rule) => {
-    await base44.entities.AutomationRule.update(rule.id, { is_active: !rule.is_active });
-    qc.invalidateQueries({ queryKey: ['automation-rules'] });
+    try {
+      await base44.entities.AutomationRule.update(rule.id, { is_active: !rule.is_active });
+      qc.invalidateQueries({ queryKey: ['automation-rules'] });
+    } catch {
+      toast.error('Error al cambiar estado de la regla');
+    }
   };
 
-  const deleteRule = async (rule) => {
-    if (!window.confirm(`¿Eliminar la regla "${rule.name}"?`)) return;
-    await base44.entities.AutomationRule.delete(rule.id);
-    qc.invalidateQueries({ queryKey: ['automation-rules'] });
+  const deleteRule = (rule) => {
+    setDlg({
+      open: true,
+      msg: `¿Eliminar la regla "${rule.name}"? Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      onOk: async () => {
+        try {
+          await base44.entities.AutomationRule.delete(rule.id);
+          qc.invalidateQueries({ queryKey: ['automation-rules'] });
+        } catch {
+          toast.error('Error al eliminar la regla');
+        }
+      },
+    });
   };
 
   const saved = () => {
@@ -237,6 +254,13 @@ export default function AutomationRules() {
           onSaved={saved}
         />
       )}
+      <ConfirmDialog
+        open={dlg.open}
+        message={dlg.msg}
+        confirmLabel={dlg.confirmLabel}
+        onConfirm={() => { const fn = dlg.onOk; setDlg({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null }); fn?.(); }}
+        onCancel={() => setDlg({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null })}
+      />
     </div>
   );
 }

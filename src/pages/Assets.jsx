@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, Search, AlertTriangle, X, Edit3, Trash2, User } from 'lucide-react';
-import { logAudit } from '@/services/auditLog';
+import { useAuth } from '@/lib/AuthContext';
+import { useSearchParams } from 'react-router-dom';
+import { Package, Plus, Search, AlertTriangle, X, Edit3, Trash2, User, Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 const cardStyle = { background: 'hsl(222,47%,12%)', border: '1px solid hsl(217,33%,18%)' };
@@ -44,6 +45,7 @@ function AssetForm({ activo, users, onClose, onSaved }) {
     department: activo?.department || '',
     fecha_adquisicion: activo?.fecha_adquisicion ? activo.fecha_adquisicion.slice(0, 10) : '',
     notas: activo?.notas || '',
+    valor: activo?.valor || '',
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -59,13 +61,9 @@ function AssetForm({ activo, users, onClose, onSaved }) {
     };
     if (isEdit) {
       await base44.entities.Activo.update(activo.id, payload);
-      const currentUser = await base44.auth.me().catch(() => null);
-      logAudit({ entityType: 'activo', entityId: activo.id, entityTitle: form.nombre, action: 'update', fieldChanged: 'multiple', user: currentUser, snapshot: payload });
       toast.success('Activo actualizado');
     } else {
-      const created = await base44.entities.Activo.create(payload);
-      const currentUser = await base44.auth.me().catch(() => null);
-      logAudit({ entityType: 'activo', entityId: created.id, entityTitle: form.nombre, action: 'create', user: currentUser, snapshot: payload });
+      await base44.entities.Activo.create(payload);
       toast.success('Activo creado');
     }
     setSaving(false);
@@ -123,9 +121,15 @@ function AssetForm({ activo, users, onClose, onSaved }) {
               <input value={form.department} onChange={e => set('department', e.target.value)} className={inputCls} style={inputStyle} placeholder="TI, RRHH..." />
             </div>
           </div>
-          <div>
-            <label className={labelCls}>Fecha de adquisición</label>
-            <input type="date" value={form.fecha_adquisicion} onChange={e => set('fecha_adquisicion', e.target.value)} className={inputCls} style={inputStyle} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Fecha de adquisición</label>
+              <input type="date" value={form.fecha_adquisicion} onChange={e => set('fecha_adquisicion', e.target.value)} className={inputCls} style={inputStyle} />
+            </div>
+            <div>
+              <label className={labelCls}>Valor / Precio ($)</label>
+              <input type="number" min="0" step="0.01" value={form.valor} onChange={e => set('valor', e.target.value)} className={inputCls} style={inputStyle} placeholder="1500.00" />
+            </div>
           </div>
           <div>
             <label className={labelCls}>Notas</label>
@@ -144,7 +148,16 @@ function AssetForm({ activo, users, onClose, onSaved }) {
 }
 
 function AssetDetailModal({ activo, incidents, onClose }) {
-  const relatedIncidents = incidents.filter(i => i.activo_id === activo.id || i.tool_name?.toLowerCase().includes(activo.nombre?.toLowerCase()));
+  const relatedIncidents = useMemo(() => {
+    const seen = new Set();
+    return incidents.filter(i => {
+      if (seen.has(i.id)) return false;
+      const matches = i.activo_id === activo.id ||
+        (activo.nombre && i.tool_name?.toLowerCase() === activo.nombre.toLowerCase());
+      if (matches) seen.add(i.id);
+      return matches;
+    });
+  }, [incidents, activo]);
   const estadoCfg = ESTADO_COLORS[activo.estado] || ESTADO_COLORS['Activo'];
 
   return (
@@ -212,9 +225,15 @@ function AssetDetailModal({ activo, incidents, onClose }) {
 }
 
 export default function Assets() {
-  const [search, setSearch] = useState('');
-  const [filterTipo, setFilterTipo] = useState('all');
-  const [filterEstado, setFilterEstado] = useState('all');
+  const { user } = useAuth();
+  const isAuditor = user?.role === 'auditor';
+  const [sp, setSP] = useSearchParams();
+  const search      = sp.get('q') || '';
+  const filterTipo  = sp.get('tipo') || 'all';
+  const filterEstado = sp.get('estado') || 'all';
+  const setSearch      = (val) => setSP(p => { const n = new URLSearchParams(p); val ? n.set('q', val) : n.delete('q'); return n; });
+  const setFilterTipo  = (val) => setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('tipo', val) : n.delete('tipo'); return n; });
+  const setFilterEstado = (val) => setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('estado', val) : n.delete('estado'); return n; });
   const [showForm, setShowForm] = useState(false);
   const [editActivo, setEditActivo] = useState(null);
   const [detailActivo, setDetailActivo] = useState(null);
@@ -223,18 +242,18 @@ export default function Assets() {
 
   const { data: activos = [], isLoading } = useQuery({
     queryKey: ['activos'],
-    queryFn: () => base44.entities.Activo.list('-created_date', 500),
+    queryFn: () => base44.entities.Activo.filter({ is_deleted: false }, '-created_date', 500),
   });
 
   const { data: incidents = [] } = useQuery({
     queryKey: ['incidents'],
-    queryFn: () => base44.entities.Incident.list('-created_date', 500),
+    queryFn: () => base44.entities.Incident.filter({ is_deleted: false }, '-created_date', 500),
     initialData: [],
   });
 
   const { data: users = [] } = useQuery({
     queryKey: ['all-users'],
-    queryFn: () => base44.entities.User.list(),
+    queryFn: () => base44.entities.User.filter({ is_active: true }),
     initialData: [],
   });
 
@@ -252,10 +271,18 @@ export default function Assets() {
   }, [activos, search, filterTipo, filterEstado]);
 
   const handleDelete = async (id) => {
-    await base44.entities.Activo.delete(id);
-    qc.invalidateQueries({ queryKey: ['activos'] });
-    setDeleteId(null);
-    toast.success('Activo eliminado');
+    try {
+      await base44.entities.Activo.update(id, {
+        is_deleted: true,
+        deleted_by_name: user?.full_name || user?.email || '',
+      });
+      qc.invalidateQueries({ queryKey: ['activos'] });
+      setDeleteId(null);
+      toast.success('Activo movido a la papelera');
+    } catch (err) {
+      console.error('[Assets] handleDelete error:', err);
+      toast.error('Error al mover a papelera');
+    }
   };
 
   // Compute incident count per asset
@@ -268,6 +295,79 @@ export default function Assets() {
   }, [incidents]);
 
   const selectStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
+
+  const csvRef = useRef(null);
+  const [importing, setImporting] = useState(false);
+
+  const downloadCSVTemplate = () => {
+    const lines = [
+      'nombre,tipo,marca,modelo,numero_serie,estado,department,fecha_adquisicion,valor,notas',
+      'Laptop Dell XPS 15,Hardware,Dell,XPS 15,SN-12345,Activo,TI,2024-01-15,1500,Equipo de desarrollo',
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'plantilla_activos.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCSVImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        function parseCSVLine(line) {
+          const result = [];
+          let cur = '', inQ = false;
+          for (let i = 0; i < line.length; i++) {
+            if (line[i] === '"') { inQ = !inQ; }
+            else if (line[i] === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+            else { cur += line[i]; }
+          }
+          result.push(cur.trim());
+          return result;
+        }
+        const lines = evt.target.result.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length < 2) { toast.error('CSV vacío'); setImporting(false); return; }
+        const headers = parseCSVLine(lines[0]).map(h => h.trim());
+        const idx = (name) => headers.indexOf(name);
+        let skipped = 0;
+        const rows = lines.slice(1).map(line => {
+          const cols = parseCSVLine(line);
+          if (idx('nombre') === -1) { skipped++; return null; }
+          const nombreVal = cols[idx('nombre')] || '';
+          if (!nombreVal) { skipped++; return null; }
+          const rawDate = cols[idx('fecha_adquisicion')];
+          const parsedDate = rawDate ? new Date(rawDate) : null;
+          const fecha_adquisicion = parsedDate && !isNaN(parsedDate) ? parsedDate.toISOString() : null;
+          return {
+            nombre: nombreVal,
+            tipo: cols[idx('tipo')] || 'Hardware',
+            marca: cols[idx('marca')] || '',
+            modelo: cols[idx('modelo')] || '',
+            numero_serie: cols[idx('numero_serie')] || '',
+            estado: cols[idx('estado')] || 'Activo',
+            department: cols[idx('department')] || '',
+            fecha_adquisicion,
+            valor: cols[idx('valor')] ? parseFloat(cols[idx('valor')]) : null,
+            notas: cols[idx('notas')] || '',
+          };
+        }).filter(Boolean);
+        if (!rows.length) { toast.error('Sin filas válidas'); setImporting(false); return; }
+        await Promise.all(rows.map(row => base44.entities.Activo.create(row)));
+        const created = rows.length;
+        toast.success(`${created} activo(s) importados${skipped > 0 ? `, ${skipped} filas omitidas` : ''}`);
+        refresh();
+      } catch (err) {
+        toast.error('Error al importar el CSV');
+        console.error('[Assets CSV]', err);
+      }
+      setImporting(false);
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  };
 
   const stats = {
     total: activos.length,
@@ -286,11 +386,26 @@ export default function Assets() {
           </h1>
           <p className="text-xs mt-0.5" style={{ color: muted }}>Hardware, software y equipos de la empresa</p>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
-          style={{ background: 'hsl(217,91%,45%)' }}>
-          <Plus className="w-4 h-4" /> Nuevo activo
-        </button>
+        {!isAuditor && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input ref={csvRef} type="file" accept=".csv" onChange={handleCSVImport} className="hidden" />
+            <button onClick={downloadCSVTemplate}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90"
+              style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
+              <Download className="w-4 h-4" /> Plantilla CSV
+            </button>
+            <button onClick={() => csvRef.current?.click()} disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
+              <Upload className="w-4 h-4" /> {importing ? 'Importando...' : 'Importar CSV'}
+            </button>
+            <button onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
+              style={{ background: 'hsl(217,91%,45%)' }}>
+              <Plus className="w-4 h-4" /> Nuevo activo
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
@@ -380,16 +495,20 @@ export default function Assets() {
                     style={{ background: 'hsl(217,33%,20%)', color: 'hsl(215,20%,70%)' }}>
                     Ver detalle
                   </button>
-                  <button onClick={() => setEditActivo(a)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium hover:opacity-80"
-                    style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
-                    <Edit3 className="w-3 h-3" /> Editar
-                  </button>
-                  <button onClick={() => setDeleteId(a.id)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium hover:opacity-80"
-                    style={{ background: 'hsl(0,50%,20%)', color: '#f87171' }}>
-                    <Trash2 className="w-3 h-3" /> Eliminar
-                  </button>
+                  {!isAuditor && (
+                    <button onClick={() => setEditActivo(a)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium hover:opacity-80"
+                      style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
+                      <Edit3 className="w-3 h-3" /> Editar
+                    </button>
+                  )}
+                  {!isAuditor && (
+                    <button onClick={() => setDeleteId(a.id)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium hover:opacity-80"
+                      style={{ background: 'hsl(0,50%,20%)', color: '#f87171' }}>
+                      <Trash2 className="w-3 h-3" /> Eliminar
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -410,11 +529,11 @@ export default function Assets() {
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="rounded-xl p-6 w-full max-w-sm" style={modalStyle}>
-            <h3 className="text-base font-semibold text-white mb-2">¿Eliminar activo?</h3>
-            <p className="text-sm text-gray-400 mb-4">Esta acción no puede deshacerse.</p>
+            <h3 className="text-base font-semibold text-white mb-2">¿Mover activo a la papelera?</h3>
+            <p className="text-sm text-gray-400 mb-4">Podrás recuperarlo desde la sección Papelera.</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cancelar</button>
-              <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 text-sm rounded-lg text-white font-medium" style={{ background: 'hsl(0,70%,40%)' }}>Eliminar</button>
+              <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 text-sm rounded-lg text-white font-medium" style={{ background: 'hsl(38,70%,35%)' }}>Mover a papelera</button>
             </div>
           </div>
         </div>

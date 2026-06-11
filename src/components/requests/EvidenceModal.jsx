@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { X, Paperclip, Link, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -57,36 +58,38 @@ export default function EvidenceModal({ request, user, onClose, onSaved }) {
     const readyUrls = attachments.filter(a => a.url).map(a => a.url);
     const allUrls = [...(request.file_urls || []), ...readyUrls];
 
-    await base44.entities.Request.update(request.id, {
-      status: 'En Validación',
-      file_urls: allUrls,
-    });
-
-    await base44.entities.RequestHistory.create({
-      request_id: request.id,
-      from_status: request.status,
-      to_status: 'En Validación',
-      note: evidenceParts.join(' | ') || 'Evidencia adjunta como archivo',
-      by_user_id: user?.email,
-      by_user_name: user?.full_name || user?.email,
-    });
-
-    // Notify requester
-    if (request.requester_id && request.requester_id !== user?.email) {
-      await base44.entities.Notification.create({
-        user_id: request.requester_id,
-        type: 'status_change',
-        title: '🔍 Tu solicitud está en revisión',
-        message: `La solicitud "${request.title}" fue enviada a revisión y está siendo evaluada.`,
-        request_id: request.id,
-        request_title: request.title,
-        is_read: false,
+    try {
+      const { error: evidenceError } = await supabase.rpc('record_status_change', {
+        p_request_id:   request.id,
+        p_to_status:    'En Validación',
+        p_note:         evidenceParts.join(' | ') || 'Evidencia adjunta como archivo',
+        p_by_user_id:   user?.email || '',
+        p_by_user_name: user?.full_name || user?.email || '',
+        p_file_urls:    allUrls,
       });
-    }
+      if (evidenceError) throw evidenceError;
 
-    toast.success('Solicitud enviada a revisión con evidencia registrada');
-    setSaving(false);
-    onSaved();
+      // Notify requester
+      if (request.requester_id && request.requester_id !== user?.email) {
+        await base44.entities.Notification.create({
+          user_id: request.requester_id,
+          type: 'status_change',
+          title: '🔍 Tu solicitud está en revisión',
+          message: `La solicitud "${request.title}" fue enviada a revisión y está siendo evaluada.`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        });
+      }
+
+      toast.success('Solicitud enviada a revisión con evidencia registrada');
+      setSaving(false);
+      onSaved();
+    } catch (err) {
+      console.error('[EvidenceModal] handleSave error:', err);
+      toast.error('Error al enviar evidencia');
+      setSaving(false);
+    }
   };
 
   return (

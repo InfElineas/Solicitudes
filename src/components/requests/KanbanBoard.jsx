@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { toast } from 'sonner';
-import { sendFinalizadaEmail } from '@/services/emailNotifications';
+import { sendFinalizadaEmail, sendEnProcesoEmail, sendRequiereInfoEmail } from '@/services/emailNotifications';
 import { getSLAInfo, SEMAPHORE_COLOR } from '@/lib/slaUtils';
 import EvidenceModal from './EvidenceModal';
 import {
@@ -10,6 +11,7 @@ import {
   AssignModal,
   RejectModal,
   DetailModal,
+  BlockedModal,
 } from './RequestModals';
 
 // Protocolo Operativo v1.0 — 9 estados
@@ -34,12 +36,12 @@ const PRIORITY_COLORS = {
 
 // Transiciones válidas — Protocolo Operativo v1.0
 const TRANSITIONS = {
-  'Pendiente':            ['En Proceso', 'Rechazado', 'Cancelado'],
+  'Pendiente':            ['En Proceso', 'En Espera', 'Requiere Información', 'Rechazado', 'Cancelado'],
   'En Proceso':           ['En Espera', 'Requiere Información', 'En Validación', 'Retrasado', 'Cancelado'],
-  'En Espera':            ['En Proceso', 'Cancelado'],
-  'Requiere Información': ['En Proceso', 'Cancelado'],
+  'En Espera':            ['En Proceso', 'En Validación', 'Cancelado'],
+  'Requiere Información': ['En Proceso', 'En Validación', 'Cancelado'],
   'En Validación':        ['Finalizado', 'En Proceso'],
-  'Retrasado':            ['En Proceso', 'Cancelado'],
+  'Retrasado':            ['En Proceso', 'En Validación', 'Cancelado'],
   'Finalizado':           [],
   'Cancelado':            [],
   'Rechazado':            [],
@@ -144,7 +146,7 @@ function KanbanCard({ req, index, user, users, onRefresh }) {
           )}
           {modal === 'assign' && (
             <div onClick={e => e.stopPropagation()}>
-              <AssignModal request={req} users={users} onClose={() => setModal(null)} onSaved={saved} />
+              <AssignModal request={req} users={users} onClose={() => setModal(null)} onSaved={saved} user={user} />
             </div>
           )}
           {modal === 'reject' && (
@@ -161,6 +163,8 @@ function KanbanCard({ req, index, user, users, onRefresh }) {
 export default function KanbanBoard({ requests, user, users, onRefresh }) {
   const [pendingEvidenceReq, setPendingEvidenceReq] = useState(null);
   const [pendingDest, setPendingDest] = useState(null);
+  const [pendingBlockedReq, setPendingBlockedReq] = useState(null);
+  const [pendingBlockedStatus, setPendingBlockedStatus] = useState(null);
   const role = user?.role || 'employee';
   const canManage = role === 'admin' || role === 'support';
 
@@ -181,15 +185,17 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
     if (newStatus === 'En Proceso' && !req.started_at) {
       extra.started_at = new Date().toISOString();
     }
-    await base44.entities.Request.update(req.id, { status: newStatus, ...extra });
-    await base44.entities.RequestHistory.create({
-      request_id: req.id,
-      from_status: oldStatus,
-      to_status: newStatus,
-      note: 'Movido via tablero Kanban',
-      by_user_id: user?.email,
-      by_user_name: user?.full_name || user?.email,
+    const { error: moveError } = await supabase.rpc('record_status_change', {
+      p_request_id:      req.id,
+      p_to_status:       newStatus,
+      p_note:            'Movido via tablero Kanban',
+      p_by_user_id:      user?.email || '',
+      p_by_user_name:    user?.full_name || user?.email || '',
+      p_started_at:      extra.started_at || null,
+      p_completion_date: extra.completion_date || null,
+      p_actual_hours:    extra.actual_hours || null,
     });
+    if (moveError) throw moveError;
     if (req.requester_id && req.requester_id !== user?.email) {
       const titles = { 'En Validación': '🔍 Tu solicitud está en validación', 'Finalizado': '✅ Tu solicitud fue finalizada', 'Rechazado': '❌ Tu solicitud fue rechazada', 'En Proceso': '🔧 Tu solicitud está en proceso', 'Requiere Información': '⚠️ Tu solicitud requiere información', 'Cancelado': '🚫 Tu solicitud fue cancelada' };
       base44.entities.Notification.create({
@@ -203,7 +209,13 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
       });
     }
     if (newStatus === 'Finalizado') {
-      sendFinalizadaEmail({ ...req, status: 'Finalizado', ...extra });
+      sendFinalizadaEmail({ ...req, status: 'Finalizado', ...extra }).catch(e => console.warn('sendFinalizadaEmail:', e));
+    }
+    if (newStatus === 'En Proceso') {
+      sendEnProcesoEmail({ ...req, status: 'En Proceso', ...extra }).catch(e => console.warn('sendEnProcesoEmail:', e));
+    }
+    if (newStatus === 'Requiere Información') {
+      sendRequiereInfoEmail({ ...req, status: 'Requiere Información' }).catch(e => console.warn('sendRequiereInfoEmail:', e));
     }
     toast.success(`Solicitud movida a "${newStatus}"`);
     onRefresh();
@@ -246,7 +258,20 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
       return;
     }
 
-    await performMove(req, newStatus, oldStatus);
+    // Requerir motivo al mover a estados de bloqueo
+    if (newStatus === 'En Espera' || newStatus === 'Requiere Información' || newStatus === 'Retrasado') {
+      setPendingBlockedReq(req);
+      setPendingBlockedStatus(newStatus);
+      return;
+    }
+
+    try {
+      await performMove(req, newStatus, oldStatus);
+    } catch (err) {
+      console.error('[KanbanBoard] onDragEnd error:', err);
+      toast.error('Error al mover la solicitud');
+      onRefresh();
+    }
   };
 
   return (
@@ -257,6 +282,15 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
         user={user}
         onClose={() => { setPendingEvidenceReq(null); setPendingDest(null); }}
         onSaved={() => { setPendingEvidenceReq(null); setPendingDest(null); onRefresh(); }}
+      />
+    )}
+    {pendingBlockedReq && (
+      <BlockedModal
+        request={pendingBlockedReq}
+        targetStatus={pendingBlockedStatus}
+        user={user}
+        onClose={() => { setPendingBlockedReq(null); setPendingBlockedStatus(null); }}
+        onSaved={() => { setPendingBlockedReq(null); setPendingBlockedStatus(null); onRefresh(); }}
       />
     )}
     <DragDropContext onDragEnd={onDragEnd}>

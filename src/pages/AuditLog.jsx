@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ShieldCheck, Search, RotateCcw, Download, FileText,
-  AlertTriangle, CheckCircle2, RefreshCw, Clock
+  AlertTriangle, CheckCircle2, RefreshCw, Clock, Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -69,10 +69,11 @@ function RestoreModal({ log, onClose, onRestored }) {
     try {
       const data = JSON.parse(log.snapshot) || {};
       const { id, created_date, updated_date, created_by, ...restoreData } = data;
-      if (log.entity_type === 'request')  await base44.entities.Request.update(log.entity_id, restoreData);
-      if (log.entity_type === 'incident') await base44.entities.Incident.update(log.entity_id, restoreData);
-      if (log.entity_type === 'activo')   await base44.entities.Activo.update(log.entity_id, restoreData);
-      if (log.entity_type === 'guardia')  await base44.entities.Guardia.update(log.entity_id, restoreData);
+      if (log.entity_type === 'request')        await base44.entities.Request.update(log.entity_id, restoreData);
+      else if (log.entity_type === 'incident')  await base44.entities.Incident.update(log.entity_id, restoreData);
+      else if (log.entity_type === 'activo')    await base44.entities.Activo.update(log.entity_id, restoreData);
+      else if (log.entity_type === 'guardia')   await base44.entities.Guardia.update(log.entity_id, restoreData);
+      else { toast.error('Tipo de entidad desconocido, no se puede restaurar'); return; }
       toast.success('Estado restaurado correctamente');
       onRestored();
     } catch {
@@ -120,9 +121,102 @@ function SnapshotModal({ log, onClose }) {
   );
 }
 
+const INSTALL_SQL = `-- Pegar en Supabase → SQL Editor y ejecutar
+CREATE OR REPLACE FUNCTION fn_audit_log()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  _entity_type TEXT; _entity_id TEXT; _entity_title TEXT;
+  _action TEXT; _field TEXT; _old_val TEXT; _new_val TEXT; _snapshot TEXT;
+BEGIN
+  _entity_type := REPLACE(REPLACE(TG_TABLE_NAME,'requests','request'),'incidents','incident');
+  IF TG_OP = 'INSERT' THEN
+    _action := 'create'; _entity_id := NEW.id::TEXT;
+    _entity_title := COALESCE(NEW.title, NEW.name, NEW.descripcion, '—');
+    _snapshot := row_to_json(NEW)::TEXT;
+  ELSIF TG_OP = 'DELETE' THEN
+    _action := 'delete'; _entity_id := OLD.id::TEXT;
+    _entity_title := COALESCE(OLD.title, OLD.name, OLD.descripcion, '—');
+    _snapshot := row_to_json(OLD)::TEXT;
+  ELSIF TG_OP = 'UPDATE' THEN
+    _entity_id := NEW.id::TEXT;
+    _entity_title := COALESCE(NEW.title, NEW.name, NEW.descripcion, '—');
+    _snapshot := row_to_json(NEW)::TEXT;
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+      _action := 'status_change'; _field := 'status';
+      _old_val := OLD.status; _new_val := NEW.status;
+    ELSE
+      _action := 'update';
+      IF OLD.title IS DISTINCT FROM NEW.title THEN
+        _field := 'title'; _old_val := OLD.title; _new_val := NEW.title;
+      ELSIF OLD.priority IS DISTINCT FROM NEW.priority THEN
+        _field := 'priority'; _old_val := OLD.priority; _new_val := NEW.priority;
+      END IF;
+    END IF;
+  END IF;
+  INSERT INTO audit_logs (entity_type,entity_id,entity_title,action,
+    field_changed,old_value,new_value,snapshot,created_date)
+  VALUES (_entity_type,_entity_id,_entity_title,_action,
+    _field,_old_val,_new_val,_snapshot,NOW());
+  RETURN COALESCE(NEW, OLD);
+END; $$;
+
+DROP TRIGGER IF EXISTS trg_audit_requests  ON requests;
+DROP TRIGGER IF EXISTS trg_audit_incidents ON incidents;
+DROP TRIGGER IF EXISTS trg_audit_activos   ON activos;
+DROP TRIGGER IF EXISTS trg_audit_guardias  ON guardias;
+
+CREATE TRIGGER trg_audit_requests  AFTER INSERT OR UPDATE OR DELETE ON requests  FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
+CREATE TRIGGER trg_audit_incidents AFTER INSERT OR UPDATE OR DELETE ON incidents FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
+CREATE TRIGGER trg_audit_activos   AFTER INSERT OR UPDATE OR DELETE ON activos   FOR EACH ROW EXECUTE FUNCTION fn_audit_log();
+CREATE TRIGGER trg_audit_guardias  AFTER INSERT OR UPDATE OR DELETE ON guardias  FOR EACH ROW EXECUTE FUNCTION fn_audit_log();`;
+
+function EmptyAuditState() {
+  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(INSTALL_SQL).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); });
+  };
+  return (
+    <div className="rounded-xl p-5" style={{ background: 'hsl(38,50%,10%)', border: '1px solid hsl(38,60%,22%)' }}>
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-yellow-300 mb-1">Triggers de auditoría no instalados</p>
+          <p className="text-xs mb-3" style={{ color: 'hsl(38,60%,60%)' }}>
+            La tabla está vacía porque los triggers de BD aún no existen. Una vez instalados, todos los cambios en solicitudes, incidencias, activos y guardias quedan registrados.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={copy}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium hover:opacity-90"
+              style={{ background: 'hsl(38,70%,30%)', color: '#fde68a' }}>
+              {copied ? '✓ Copiado' : '⎘ Copiar SQL de instalación'}
+            </button>
+            <button onClick={() => setOpen(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs hover:opacity-80"
+              style={{ background: 'hsl(217,33%,20%)', color: muted }}>
+              {open ? 'Ocultar SQL' : 'Ver SQL'}
+            </button>
+          </div>
+          {open && (
+            <pre className="mt-3 text-[10px] rounded-lg p-3 overflow-x-auto text-green-300 whitespace-pre-wrap break-words"
+              style={{ background: 'hsl(222,47%,8%)', maxHeight: 280, overflowY: 'auto' }}>
+              {INSTALL_SQL}
+            </pre>
+          )}
+          <ol className="mt-3 text-xs space-y-0.5" style={{ color: 'hsl(38,60%,65%)' }}>
+            <li>1. Copia el SQL → <strong className="text-white">Supabase Dashboard → SQL Editor</strong></li>
+            <li>2. Ejecuta → recarga esta página</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PAGE_SIZE = 40;
 
 export default function AuditLog() {
+  const [tab,           setTab]           = useState('audit');
   const [search,        setSearch]        = useState('');
   const [filterEntity,  setFilterEntity]  = useState('all');
   const [filterAction,  setFilterAction]  = useState('all');
@@ -131,6 +225,9 @@ export default function AuditLog() {
   const [restoreLog,    setRestoreLog]    = useState(null);
   const [snapshotLog,   setSnapshotLog]   = useState(null);
   const [page,          setPage]          = useState(0);
+  const [emailSearch,   setEmailSearch]   = useState('');
+  const [emailStatus,   setEmailStatus]   = useState('all');
+  const [emailPeriod,   setEmailPeriod]   = useState('7d');
   const qc = useQueryClient();
 
   const { data: logs = [], isLoading, refetch } = useQuery({
@@ -138,6 +235,26 @@ export default function AuditLog() {
     queryFn:  () => base44.entities.AuditLog.list('-created_date', 1000),
     refetchInterval: 60000,
   });
+
+  const { data: emailLogs = [], isLoading: emailLoading, refetch: refetchEmail } = useQuery({
+    queryKey: ['email-logs'],
+    queryFn:  () => base44.entities.EmailLog.list('-created_date', 500),
+    refetchInterval: 60000,
+  });
+
+  const filteredEmails = useMemo(() => {
+    const now = new Date();
+    let l = emailLogs;
+    if (emailPeriod === '1d')  l = l.filter(x => new Date(x.created_date) > new Date(now - 86400000));
+    if (emailPeriod === '7d')  l = l.filter(x => new Date(x.created_date) > new Date(now - 7  * 86400000));
+    if (emailPeriod === '30d') l = l.filter(x => new Date(x.created_date) > new Date(now - 30 * 86400000));
+    if (emailStatus !== 'all') l = l.filter(x => x.status === emailStatus);
+    if (emailSearch) {
+      const s = emailSearch.toLowerCase();
+      l = l.filter(x => x.to_email?.toLowerCase().includes(s) || x.subject?.toLowerCase().includes(s) || x.error_message?.toLowerCase().includes(s));
+    }
+    return l;
+  }, [emailLogs, emailPeriod, emailStatus, emailSearch]);
 
   // Unique users in logs
   const allUsers = useMemo(() => {
@@ -188,6 +305,94 @@ export default function AuditLog() {
 
   return (
     <div className="space-y-5">
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' }}>
+        {[
+          { key: 'audit', label: 'Auditoría',    icon: ShieldCheck },
+          { key: 'email', label: 'Log de Emails', icon: Mail },
+        ].map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => setTab(key)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+            style={tab === key
+              ? { background: 'hsl(217,91%,40%)', color: 'white' }
+              : { color: muted }}>
+            <Icon className="w-3.5 h-3.5" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'email' ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2"><Mail className="w-4 h-4 text-blue-400" /> Log de Emails</h2>
+              <p className="text-xs mt-0.5" style={{ color: muted }}>Todos los intentos de envío de correo — éxitos y fallos</p>
+            </div>
+            <button onClick={() => refetchEmail()} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs hover:opacity-80" style={{ background: 'hsl(217,33%,20%)', color: muted }}>
+              <RefreshCw className="w-3.5 h-3.5" /> Actualizar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 p-4 rounded-xl" style={cardStyle}>
+            <input value={emailSearch} onChange={e => setEmailSearch(e.target.value)} placeholder="Buscar destinatario, asunto, error..."
+              className="flex-1 min-w-48 px-3 py-2 rounded-lg text-sm text-white outline-none" style={{ background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' }} />
+            <select value={emailStatus} onChange={e => setEmailStatus(e.target.value)} className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer" style={selectStyle}>
+              <option value="all">Todos</option>
+              <option value="sent">Enviados</option>
+              <option value="failed">Fallidos</option>
+            </select>
+            <select value={emailPeriod} onChange={e => setEmailPeriod(e.target.value)} className="px-3 py-2 rounded-lg text-xs outline-none cursor-pointer" style={selectStyle}>
+              <option value="1d">Hoy</option>
+              <option value="7d">Últimos 7 días</option>
+              <option value="30d">Últimos 30 días</option>
+              <option value="all">Todo</option>
+            </select>
+          </div>
+          <div className="flex gap-3 text-xs" style={{ color: muted }}>
+            <span>Total: {filteredEmails.length}</span>
+            <span style={{ color: '#4ade80' }}>✓ {filteredEmails.filter(x => x.status === 'sent').length} enviados</span>
+            <span style={{ color: '#f87171' }}>✕ {filteredEmails.filter(x => x.status === 'failed').length} fallidos</span>
+          </div>
+          <div className="rounded-xl overflow-hidden" style={cardStyle}>
+            {emailLoading ? (
+              <div className="p-8 text-center text-sm" style={{ color: muted }}>Cargando...</div>
+            ) : filteredEmails.length === 0 ? (
+              <div className="py-10 text-center">
+                <Mail className="w-8 h-8 mx-auto mb-2" style={{ color: 'hsl(215,20%,22%)' }} />
+                <p className="text-sm" style={{ color: muted }}>Sin registros de email para este filtro</p>
+              </div>
+            ) : (
+              filteredEmails.map((log, idx) => (
+                <div key={log.id} className="flex items-start gap-3 px-4 py-3"
+                  style={{ borderBottom: idx < filteredEmails.length - 1 ? '1px solid hsl(217,33%,15%)' : undefined }}>
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                    style={{ background: log.status === 'sent' ? 'hsl(142,60%,14%)' : 'hsl(0,50%,16%)' }}>
+                    <span className="text-[11px]">{log.status === 'sent' ? '✓' : '✕'}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-white truncate">{log.subject}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                        style={log.status === 'sent'
+                          ? { background: 'hsl(142,60%,14%)', color: '#4ade80' }
+                          : { background: 'hsl(0,50%,16%)', color: '#f87171' }}>
+                        {log.status === 'sent' ? 'Enviado' : 'Falló'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] mt-0.5" style={{ color: muted }}>→ {log.to_email}</p>
+                    {log.error_message && (
+                      <p className="text-[11px] mt-0.5 text-red-400 truncate">{log.error_message}</p>
+                    )}
+                  </div>
+                  <span className="text-[10px] shrink-0" style={{ color: 'hsl(215,20%,36%)' }}>
+                    {new Date(log.created_date).toLocaleString('es', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -216,24 +421,7 @@ export default function AuditLog() {
 
       {/* Empty state — triggers not yet installed */}
       {!isLoading && logs.length === 0 && (
-        <div className="rounded-xl p-6" style={{ background: 'hsl(38,50%,10%)', border: '1px solid hsl(38,60%,22%)' }}>
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-yellow-300 mb-1">Los triggers de auditoría no están instalados</p>
-              <p className="text-xs mb-3" style={{ color: 'hsl(38,60%,60%)' }}>
-                La tabla de auditoría está vacía porque los triggers de base de datos aún no han sido creados.
-                Una vez instalados, todos los cambios futuros en solicitudes, incidencias, activos y guardias quedarán registrados automáticamente.
-              </p>
-              <p className="text-xs font-medium text-yellow-200 mb-1">Para activar la auditoría:</p>
-              <ol className="text-xs space-y-0.5" style={{ color: 'hsl(38,60%,65%)' }}>
-                <li>1. Abre <strong className="text-white">Supabase Dashboard → SQL Editor</strong></li>
-                <li>2. Copia y ejecuta el contenido del archivo <strong className="text-white">supabase-audit-triggers.sql</strong></li>
-                <li>3. Recarga esta página — los nuevos cambios empezarán a registrarse</li>
-              </ol>
-            </div>
-          </div>
-        </div>
+        <EmptyAuditState />
       )}
 
       {/* KPIs */}
@@ -390,6 +578,8 @@ export default function AuditLog() {
 
       {restoreLog  && <RestoreModal  log={restoreLog}  onClose={() => setRestoreLog(null)}  onRestored={() => { setRestoreLog(null);  qc.invalidateQueries({ queryKey: ['audit-logs'] }); }} />}
       {snapshotLog && <SnapshotModal log={snapshotLog} onClose={() => setSnapshotLog(null)} />}
+      </>
+      )}
     </div>
   );
 }
