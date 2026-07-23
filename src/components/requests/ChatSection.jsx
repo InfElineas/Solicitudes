@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Send, MessageSquare } from 'lucide-react';
 
-export default function ChatSection({ entityType, entityId, user }) {
+// participants: [{ email, name }] — usuarios a notificar al recibir un mensaje (excluye al remitente)
+export default function ChatSection({ entityType, entityId, user, participants = [] }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -31,13 +32,28 @@ export default function ChatSection({ entityType, entityId, user }) {
   const send = async () => {
     if (!text.trim() || sending) return;
     setSending(true);
+    const msg = text.trim();
     await base44.entities.ChatLog.create({
       entity_type: entityType,
       entity_id: entityId,
       sender_id: user?.email,
       sender_name: user?.full_name || user?.email,
-      message: text.trim(),
+      message: msg,
     });
+    // Notificar a los otros participantes
+    const others = participants.filter(p => p.email && p.email !== user?.email);
+    if (others.length > 0) {
+      const preview = msg.length > 100 ? msg.slice(0, 100) + '…' : msg;
+      Promise.all(others.map(p =>
+        base44.entities.Notification.create({
+          user_id: p.email,
+          type: 'comment',
+          title: `💬 ${user?.full_name || user?.email} te envió un mensaje`,
+          message: `"${preview}"`,
+          is_read: false,
+        })
+      )).catch(() => {});
+    }
     setText('');
     setSending(false);
   };

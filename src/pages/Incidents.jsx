@@ -427,7 +427,15 @@ function IncidentDetailModal({ incident, user, onClose }) {
         <div className="flex border-b mb-4" style={{ borderColor: 'hsl(217,33%,22%)' }}>
           <button onClick={() => setTab('chat')} className={`px-3 py-2 text-xs font-medium ${ tab === 'chat' ? 'text-white border-b-2 border-blue-500' : 'text-gray-400'}`}>💬 Chat</button>
         </div>
-        {tab === 'chat' && <ChatSection entityType="incident" entityId={incident.id} user={user} />}
+        {tab === 'chat' && <ChatSection
+          entityType="incident"
+          entityId={incident.id}
+          user={user}
+          participants={[
+            incident.reporter_email ? { email: incident.reporter_email, name: incident.reporter_name || incident.reporter_email } : null,
+            incident.assigned_to    ? { email: incident.assigned_to,    name: incident.assigned_to_name || incident.assigned_to } : null,
+          ].filter(Boolean)}
+        />}
       </div>
     </div>
   );
