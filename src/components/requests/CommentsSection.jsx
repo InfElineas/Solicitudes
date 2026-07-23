@@ -116,17 +116,26 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
           })
         ));
 
-        // Email for @mentions
+        // Email + in-app notification for @mentions
         const mentionedUsers = extractMentions(text.trim(), allUsersLocal);
-        await Promise.all(mentionedUsers.map(mu =>
+        await Promise.all(mentionedUsers.flatMap(mu => [
           sendMentionEmail({
             mentionedEmail: mu.email,
             mentionedName: mu.full_name,
             commenterName: user?.full_name || user?.email,
             commentText: text.trim(),
             request: requestInfo,
-          })
-        ));
+          }),
+          base44.entities.Notification.create({
+            user_id: mu.email,
+            type: 'comment',
+            title: `💬 ${user?.full_name || user?.email} te mencionó`,
+            message: `"${text.trim().slice(0, 100)}${text.trim().length > 100 ? '...' : ''}"`,
+            request_id: requestId,
+            request_title: requestInfo.title,
+            is_read: false,
+          }),
+        ]));
       }
 
       setText('');

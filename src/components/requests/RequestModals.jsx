@@ -197,6 +197,21 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
           requester_id: user?.email,
           requester_name: user?.full_name || user?.email,
         });
+        // Notificar a admins y soporte de la nueva solicitud
+        base44.entities.User.filter({ is_active: true }).then(allUsers => {
+          const staff = allUsers.filter(u => u.role === 'admin' || u.role === 'support');
+          return Promise.all(staff.map(u =>
+            base44.entities.Notification.create({
+              user_id: u.email,
+              type: 'info',
+              title: '📥 Nueva solicitud recibida',
+              message: `${user?.full_name || user?.email} creó: "${payload.title}"`,
+              request_id: created?.id,
+              request_title: payload.title,
+              is_read: false,
+            })
+          ));
+        }).catch(() => {});
         // Mostrar pantalla de confirmación con token público
         setConfirmed({
           id: created?.id || '',
@@ -582,6 +597,18 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
           type: 'status_change',
           title: '🔄 Solicitud reasignada',
           message: `La solicitud "${request.title}" fue reasignada a otro técnico.`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        });
+      }
+      // Notificar al solicitante que su solicitud ya tiene responsable
+      if (request.requester_id && request.requester_id !== user?.email && request.requester_id !== techId) {
+        await base44.entities.Notification.create({
+          user_id: request.requester_id,
+          type: 'status_change',
+          title: isReassign ? '🔄 Tu solicitud tiene un nuevo responsable' : '👤 Tu solicitud tiene un responsable asignado',
+          message: `La solicitud "${request.title}" fue asignada a ${tech?.full_name || techId}.`,
           request_id: request.id,
           request_title: request.title,
           is_read: false,
@@ -1085,6 +1112,23 @@ export function BlockedModal({ request, targetStatus, user, onClose, onSaved }) 
           request_title: request.title,
           is_read: false,
         });
+      }
+      // Notificar al técnico asignado (si es diferente al que realiza la acción)
+      if (request.assigned_to_id && request.assigned_to_id !== user?.email) {
+        const techTitle = {
+          'En Espera': '⏸ Solicitud puesta en espera',
+          'Requiere Información': '⚠️ Solicitud requiere información del cliente',
+          'Retrasado': '🕐 Solicitud marcada como retrasada',
+        }[targetStatus] || `Estado: ${targetStatus}`;
+        base44.entities.Notification.create({
+          user_id: request.assigned_to_id,
+          type: 'status_change',
+          title: techTitle,
+          message: `La solicitud "${request.title}" cambió a "${targetStatus}". Motivo: ${reason}`,
+          request_id: request.id,
+          request_title: request.title,
+          is_read: false,
+        }).catch(() => {});
       }
       if (targetStatus === 'Requiere Información') {
         sendRequiereInfoEmail({ ...request, status: 'Requiere Información' }).catch(() => {});

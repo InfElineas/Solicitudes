@@ -200,13 +200,37 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
       const titles = { 'En Validación': '🔍 Tu solicitud está en validación', 'Finalizado': '✅ Tu solicitud fue finalizada', 'Rechazado': '❌ Tu solicitud fue rechazada', 'En Proceso': '🔧 Tu solicitud está en proceso', 'Requiere Información': '⚠️ Tu solicitud requiere información', 'Cancelado': '🚫 Tu solicitud fue cancelada' };
       base44.entities.Notification.create({
         user_id: req.requester_id,
-        type: 'status_change',
+        type: newStatus === 'Finalizado' ? 'resolved' : 'status_change',
         title: titles[newStatus] || `Estado cambiado a ${newStatus}`,
         message: `La solicitud "${req.title}" fue movida a "${newStatus}".`,
         request_id: req.id,
         request_title: req.title,
         is_read: false,
       });
+    }
+    // Notificar al técnico asignado si la solicitud se cancela o finaliza
+    if (req.assigned_to_id && req.assigned_to_id !== user?.email && req.assigned_to_id !== req.requester_id) {
+      if (newStatus === 'Cancelado') {
+        base44.entities.Notification.create({
+          user_id: req.assigned_to_id,
+          type: 'status_change',
+          title: '🚫 Solicitud asignada cancelada',
+          message: `La solicitud "${req.title}" fue cancelada.`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      } else if (newStatus === 'Finalizado') {
+        base44.entities.Notification.create({
+          user_id: req.assigned_to_id,
+          type: 'resolved',
+          title: '✅ Solicitud aprobada y finalizada',
+          message: `La solicitud "${req.title}" fue aprobada por administración.`,
+          request_id: req.id,
+          request_title: req.title,
+          is_read: false,
+        });
+      }
     }
     if (newStatus === 'Finalizado') {
       sendFinalizadaEmail({ ...req, status: 'Finalizado', ...extra }).catch(e => console.warn('sendFinalizadaEmail:', e));

@@ -123,7 +123,7 @@ async function executeAction(rule, req, user) {
         .replace('{{title}}', req.title).replace('{{status}}', req.status);
       await base44.entities.Notification.create({
         user_id: userId,
-        type: 'assigned',
+        type: cfg.notify_type || 'info',
         title: `⚙️ Regla: ${rule.name}`,
         message,
         request_id: req.id,

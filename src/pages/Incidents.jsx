@@ -494,6 +494,40 @@ function ResolveModal({ incident, techs, onClose, onSaved }) {
         updates.resolution_notes = (updates.resolution_notes || '') + urlsText;
       }
       await base44.entities.Incident.update(incident.id, updates);
+
+      // Notificar asignación manual al técnico
+      if (form.assigned_to && form.assigned_to !== incident.assigned_to) {
+        base44.entities.Notification.create({
+          user_id: form.assigned_to,
+          type: 'assigned',
+          title: '🚨 Se te asignó una incidencia',
+          message: `La incidencia "${incident.tool_name}" ha sido asignada a ti.`,
+          is_read: false,
+        }).catch(() => {});
+      }
+
+      // Notificar al reportero cambios de estado relevantes
+      const reporterEmail = incident.reporter_email;
+      if (reporterEmail && reporterEmail !== user?.email) {
+        if (form.status === 'Resuelto' && incident.status !== 'Resuelto') {
+          base44.entities.Notification.create({
+            user_id: reporterEmail,
+            type: 'resolved',
+            title: '✅ Tu incidencia fue resuelta',
+            message: `La incidencia "${incident.tool_name}" ha sido marcada como Resuelta.${form.resolution_notes ? ` Notas: ${form.resolution_notes.slice(0, 100)}` : ''}`,
+            is_read: false,
+          }).catch(() => {});
+        } else if (form.status === 'En atención' && incident.status !== 'En atención') {
+          base44.entities.Notification.create({
+            user_id: reporterEmail,
+            type: 'status_change',
+            title: '🔧 Tu incidencia está siendo atendida',
+            message: `La incidencia "${incident.tool_name}" ahora está en atención.`,
+            is_read: false,
+          }).catch(() => {});
+        }
+      }
+
       toast.success('Incidencia actualizada');
       if (form.status === 'Resuelto' && (incident.impact?.includes('Crítico') || incident.impact?.includes('Alto'))) {
         const params = new URLSearchParams({
@@ -740,6 +774,15 @@ export default function Incidents() {
           is_deleted: true,
           deleted_by_name: user?.full_name || user?.email || '',
         });
+        if (inc.reporter_email && inc.reporter_email !== user?.email) {
+          base44.entities.Notification.create({
+            user_id: inc.reporter_email,
+            type: 'info',
+            title: '🗑️ Tu incidencia fue eliminada',
+            message: `La incidencia "${inc.tool_name}" fue movida a la papelera.`,
+            is_read: false,
+          }).catch(() => {});
+        }
         toast.success('Incidencia movida a la papelera');
         refresh();
       },
@@ -748,9 +791,9 @@ export default function Incidents() {
 
   const selectStyle = { background: 'hsl(222,47%,13%)', border: '1px solid hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' };
 
-  const pendingCount = myIncidents.filter(i => i.status === 'Pendiente').length;
-  const inProgressCount = myIncidents.filter(i => i.status === 'En atención').length;
-  const resolvedCount = myIncidents.filter(i => i.status === 'Resuelto').length;
+  const pendingCount = incidents.filter(i => i.status === 'Pendiente').length;
+  const inProgressCount = incidents.filter(i => i.status === 'En atención').length;
+  const resolvedCount = incidents.filter(i => i.status === 'Resuelto').length;
 
   return (
     <div className="space-y-5">

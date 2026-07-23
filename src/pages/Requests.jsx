@@ -322,7 +322,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           if (req.requester_id && req.requester_id !== user?.email) {
             await base44.entities.Notification.create({
               user_id: req.requester_id,
-              type: 'status_change',
+              type: 'resolved',
               title: '✅ Tu solicitud fue finalizada',
               message: `La solicitud "${req.title}" ha sido aprobada y marcada como Finalizada.`,
               request_id: req.id,
@@ -333,7 +333,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
             await base44.entities.Notification.create({
               user_id: req.assigned_to_id,
-              type: 'status_change',
+              type: 'resolved',
               title: '✅ Solicitud aprobada y finalizada',
               message: `La solicitud "${req.title}" fue aprobada por administración.`,
               request_id: req.id,
