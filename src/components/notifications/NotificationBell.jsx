@@ -80,6 +80,7 @@ export default function NotificationBell({ user }) {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen]   = useState(false);
   const [tab, setTab]     = useState('all'); // 'all' | 'unread'
+  const [hoveredId, setHoveredId] = useState(null);
   const ref               = useRef();
   const seenIds           = useRef(new Set());
   const permissionAsked   = useRef(false);
@@ -318,11 +319,11 @@ export default function NotificationBell({ user }) {
                     className="flex items-start gap-3 px-4 py-3 transition-colors group"
                     style={{
                       borderBottom: '1px solid hsl(217,33%,15%)',
-                      background: !n.is_read ? 'hsl(217,50%,13%)' : 'transparent',
+                      background: hoveredId === n.id ? 'hsl(217,33%,16%)' : !n.is_read ? 'hsl(217,50%,13%)' : 'transparent',
                       cursor: route ? 'pointer' : 'default',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'hsl(217,33%,16%)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = !n.is_read ? 'hsl(217,50%,13%)' : 'transparent'; }}
+                    onMouseEnter={() => setHoveredId(n.id)}
+                    onMouseLeave={() => setHoveredId(null)}
                   >
                     <TypeBadge type={n.type} />
 
@@ -358,7 +359,7 @@ export default function NotificationBell({ user }) {
 
                     <button
                       onClick={e => remove(e, n)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:text-red-400 transition-all mt-0.5 shrink-0"
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 p-0.5 rounded hover:text-red-400 focus:text-red-400 transition-all mt-0.5 shrink-0"
                       style={{ color: 'hsl(215,20%,40%)' }}
                       title="Eliminar"
                     >

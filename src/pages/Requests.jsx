@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, memo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -225,7 +226,7 @@ function ActionBtn({ label, color, onClick, disabled }) {
   );
 }
 
-function RequestCard({ req, user, users, onRefresh, commentCounts = {} }) {
+const RequestCard = memo(function RequestCard({ req, user, users, departments = [], onRefresh, commentCounts = {} }) {
   const [modal, setModal] = useState(null);
   const [showEvidence, setShowEvidence] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -591,7 +592,7 @@ function RequestCard({ req, user, users, onRefresh, commentCounts = {} }) {
       </div>
 
       {/* Modals */}
-      {modal === 'edit' && <RequestFormModal request={req} departments={[]} onClose={() => setModal(null)} onSaved={saved} user={user} />}
+      {modal === 'edit' && <RequestFormModal request={req} departments={departments} onClose={() => setModal(null)} onSaved={saved} user={user} />}
       {modal === 'classify' && <ClassifyModal request={req} onClose={() => setModal(null)} onSaved={saved} user={user} />}
       {modal === 'assign' && <AssignModal request={req} users={users} onClose={() => setModal(null)} onSaved={saved} user={user} />}
       {modal === 'reject' && <RejectModal request={req} onClose={() => setModal(null)} onSaved={saved} user={user} />}
@@ -615,13 +616,13 @@ function RequestCard({ req, user, users, onRefresh, commentCounts = {} }) {
       />
     </div>
   );
-}
+});
 
 const PAGE_SIZES = [10, 20, 30, 50];
 const _FPM = { status: 'status', dept: 'dept', request_type: 'type', level: 'level', assigned: 'assigned', requester: 'requester', priority: 'priority', dateFrom: 'from', dateTo: 'to' };
 
 export default function Requests() {
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
   const [sp, setSP] = useSearchParams();
   const [showNew, setShowNew] = useState(false);
   const qc = useQueryClient();
@@ -634,7 +635,7 @@ export default function Requests() {
   const filters  = { status: sp.get('status') || '', dept: sp.get('dept') || '', request_type: sp.get('type') || '', level: sp.get('level') || '', assigned: sp.get('assigned') || '', requester: sp.get('requester') || '', priority: sp.get('priority') || '', dateFrom: sp.get('from') || '', dateTo: sp.get('to') || '' };
 
   const setSearch   = (val)      => setSP(p => { const n = new URLSearchParams(p); val ? n.set('q', val) : n.delete('q'); n.delete('page'); return n; });
-  const setSort     = (val)      => setSP(p => { const n = new URLSearchParams(p); val !== 'created_desc' ? n.set('sort', val) : n.delete('sort'); return n; });
+  const setSort     = (val)      => setSP(p => { const n = new URLSearchParams(p); val !== 'created_desc' ? n.set('sort', val) : n.delete('sort'); n.delete('page'); return n; });
   const setViewMode = (val)      => setSP(p => { const n = new URLSearchParams(p); val !== 'list' ? n.set('view', val) : n.delete('view'); return n; });
   const setPageSize = (val)      => setSP(p => { const n = new URLSearchParams(p); val !== 30 ? n.set('size', String(val)) : n.delete('size'); n.delete('page'); return n; });
   const setPage     = (valOrFn)  => setSP(p => { const n = new URLSearchParams(p); const cur = parseInt(p.get('page') || '0', 10); const next = typeof valOrFn === 'function' ? valOrFn(cur) : valOrFn; next > 0 ? n.set('page', String(next)) : n.delete('page'); return n; });
@@ -646,10 +647,6 @@ export default function Requests() {
     n.delete('page');
     return n;
   });
-
-  useEffect(() => {
-    base44.auth.me().then(setUser).catch(() => {});
-  }, []);
 
   const { data: requests = [], isLoading, refetch } = useQuery({
     queryKey: ['requests-list', user?.email, user?.role],
@@ -722,21 +719,31 @@ export default function Requests() {
   const start = filtered.length === 0 ? 0 : page * pageSize + 1;
   const end = Math.min((page + 1) * pageSize, filtered.length);
 
-  const setF = (k, v) => { setFilters(f => ({ ...f, [k]: v === 'all' ? '' : v })); setPage(0); };
-  const clearFilters = () => { setFilters({ status: '', dept: '', request_type: '', level: '', assigned: '', requester: '', priority: '', dateFrom: '', dateTo: '' }); setSearch(''); setPage(0); };
+  const setF = (k, v) => setFilters(f => ({ ...f, [k]: v === 'all' ? '' : v }));
+  const clearFilters = () => setSP(p => {
+    const n = new URLSearchParams(p);
+    ['status','dept','type','level','assigned','requester','priority','from','to','q','page'].forEach(k => n.delete(k));
+    return n;
+  });
   const hasActiveFilters = Object.values(filters).some(Boolean) || !!search;
 
-  const PRESETS = [
+  const PRESETS = useMemo(() => [
     ...(role !== 'employee' ? [{ label: 'Mis activas', icon: '👤', f: { assigned: user?.email, status: '' } }] : []),
     { label: 'Urgentes',     icon: '🔴', f: { priority: 'P1 — Crítica' } },
     { label: 'Sin asignar',  icon: '⚠️', f: { assigned: 'NONE' } },
     { label: 'En Validación',icon: '🔍', f: { status: 'En Validación' } },
     { label: 'Retrasadas',   icon: '⏰', f: { status: 'Retrasado' } },
-  ];
+  ], [role, user?.email]);
 
   const applyPreset = (preset) => {
     const next = { status: '', dept: '', request_type: '', level: '', assigned: '', requester: '', priority: '', dateFrom: '', dateTo: '', ...preset.f };
-    setFilters(next); setSearch(''); setPage(0);
+    setSP(p => {
+      const n = new URLSearchParams(p);
+      n.delete('q');
+      Object.entries(_FPM).forEach(([k, pk]) => { next[k] ? n.set(pk, next[k]) : n.delete(pk); });
+      n.delete('page');
+      return n;
+    });
   };
 
   const techUsers = users.filter(u => u.role === 'admin' || u.role === 'support');
@@ -756,6 +763,7 @@ export default function Requests() {
           <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid hsl(217,33%,22%)' }}>
             <button
               onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
               className="px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors"
               style={{ background: viewMode === 'list' ? 'hsl(217,91%,35%)' : 'hsl(222,47%,14%)', color: viewMode === 'list' ? 'white' : 'hsl(215,20%,55%)' }}
               title="Vista lista"
@@ -764,6 +772,7 @@ export default function Requests() {
             </button>
             <button
               onClick={() => setViewMode('table')}
+              aria-pressed={viewMode === 'table'}
               className="px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors"
               style={{ background: viewMode === 'table' ? 'hsl(217,91%,35%)' : 'hsl(222,47%,14%)', color: viewMode === 'table' ? 'white' : 'hsl(215,20%,55%)' }}
               title="Vista tabla"
@@ -772,6 +781,7 @@ export default function Requests() {
             </button>
             <button
               onClick={() => setViewMode('kanban')}
+              aria-pressed={viewMode === 'kanban'}
               className="px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors"
               style={{ background: viewMode === 'kanban' ? 'hsl(217,91%,35%)' : 'hsl(222,47%,14%)', color: viewMode === 'kanban' ? 'white' : 'hsl(215,20%,55%)' }}
               title="Tablero Kanban"
@@ -805,7 +815,7 @@ export default function Requests() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'hsl(215,20%,45%)' }} />
         <input
           value={search}
-          onChange={e => { setSearch(e.target.value); setPage(0); }}
+          onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por título o descripción..."
           className="w-full pl-8 pr-3 py-2 rounded-lg text-sm outline-none"
           style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white' }}
@@ -838,7 +848,7 @@ export default function Requests() {
       {/* Advanced filters */}
       <AdvancedFilters
         filters={filters}
-        onFiltersChange={(f) => { setFilters(f); setPage(0); }}
+        onFiltersChange={setFilters}
         departments={departments}
         users={users}
         role={role}
@@ -847,7 +857,7 @@ export default function Requests() {
       {/* Sort */}
       <div className="flex items-center gap-2 mb-3">
         <SlidersHorizontal className="w-3.5 h-3.5" style={{ color: 'hsl(215,20%,45%)' }} />
-        <select value={sort} onChange={e => { setSort(e.target.value); setPage(0); }} className={selectCls} style={{ ...selectStyle, minWidth: 200 }}>
+        <select value={sort} onChange={e => setSort(e.target.value)} className={selectCls} style={{ ...selectStyle, minWidth: 200 }}>
           <option value="created_desc">Creación: más recientes</option>
           <option value="created_asc">Creación: más antiguas</option>
           <option value="priority">Prioridad: Alta primero</option>
@@ -859,7 +869,7 @@ export default function Requests() {
         <span>Mostrando {start}–{end} de {filtered.length}</span>
         <div className="flex flex-wrap items-center gap-2">
           <span className="hidden sm:inline">Por página</span>
-          <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
+          <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))}
             className="px-2 py-1 rounded text-xs outline-none" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white' }}>
             {PAGE_SIZES.map(s => <option key={s}>{s}</option>)}
           </select>
@@ -891,7 +901,7 @@ export default function Requests() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {paginated.map(req => (
-            <RequestCard key={req.id} req={req} user={user} users={users} onRefresh={refetch} commentCounts={commentCounts} />
+            <RequestCard key={req.id} req={req} user={user} users={users} departments={departments} onRefresh={refetch} commentCounts={commentCounts} />
           ))}
         </div>
       )}
@@ -899,7 +909,7 @@ export default function Requests() {
       {/* Bottom pagination */}
       <div className="flex items-center justify-between mt-4 text-xs" style={{ color: 'hsl(215,20%,55%)' }}>
         <span>Por página
-          <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}
+          <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))}
             className="ml-2 px-2 py-1 rounded outline-none" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white' }}>
             {PAGE_SIZES.map(s => <option key={s}>{s}</option>)}
           </select>

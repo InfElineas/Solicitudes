@@ -59,15 +59,20 @@ function AssetForm({ activo, users, onClose, onSaved }) {
       assigned_to_name: assignedUser?.full_name || form.assigned_to || null,
       fecha_adquisicion: form.fecha_adquisicion ? new Date(form.fecha_adquisicion).toISOString() : null,
     };
-    if (isEdit) {
-      await base44.entities.Activo.update(activo.id, payload);
-      toast.success('Activo actualizado');
-    } else {
-      await base44.entities.Activo.create(payload);
-      toast.success('Activo creado');
+    try {
+      if (isEdit) {
+        await base44.entities.Activo.update(activo.id, payload);
+        toast.success('Activo actualizado');
+      } else {
+        await base44.entities.Activo.create(payload);
+        toast.success('Activo creado');
+      }
+      onSaved();
+    } catch (err) {
+      toast.error('Error al guardar el activo. Inténtalo de nuevo.');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    onSaved();
   };
 
   return (

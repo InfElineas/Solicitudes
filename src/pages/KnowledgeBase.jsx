@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -144,7 +145,12 @@ function VoteButtons({ article }) {
     localStorage.setItem(key, type);
     setVoted(type);
     base44.entities.KnowledgeBase.update(article.id, { [field]: newVal })
-      .then(() => qc.invalidateQueries({ queryKey: ['knowledge-base'] }))
+      .then(updated => {
+        if (updated?.[field] != null) {
+          setCounts(c => ({ ...c, [type === 'helpful' ? 'helpful' : 'not_helpful']: updated[field] }));
+        }
+        qc.invalidateQueries({ queryKey: ['knowledge-base'] });
+      })
       .catch(() => {});
   };
 
@@ -230,7 +236,9 @@ function ArticleModal({ article, onClose }) {
 }
 
 export default function KnowledgeBase() {
-  const [user, setUser] = useState(null);
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const prefillHandled = React.useRef(false);
   const search      = searchParams.get('q') || '';
   const filterCat   = searchParams.get('cat') || 'all';
   const setSearch   = (val) => setSearchParams(p => { const n = new URLSearchParams(p); val ? n.set('q', val) : n.delete('q'); return n; });
@@ -241,15 +249,14 @@ export default function KnowledgeBase() {
   const [deleteId, setDeleteId] = useState(null);
   const [prefillArticle, setPrefillArticle] = useState(null);
   const qc = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
-
-  // Pre-fill from incident query params
+  // Pre-fill from incident query params (one-shot per navigation event)
   useEffect(() => {
+    if (prefillHandled.current) return;
     const title = searchParams.get('inc_title');
     if (!title) return;
+    prefillHandled.current = true;
     const category = searchParams.get('inc_category') || 'Otro';
     const description = searchParams.get('inc_description') || '';
     const resolution = searchParams.get('inc_resolution') || '';
@@ -268,7 +275,7 @@ export default function KnowledgeBase() {
     setShowForm(true);
     // Limpiar params de la URL sin recargar
     setSearchParams({}, { replace: true });
-  }, []);
+  }, [searchParams]);
 
   const isStaff = user?.role === 'admin' || user?.role === 'support' || user?.role === 'auditor';
 

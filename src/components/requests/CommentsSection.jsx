@@ -20,12 +20,11 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
   const bottomRef = useRef();
   const pollFailures = useRef(0);
 
-  // Load all users once for mention detection
+  // Sync allUsers prop; fetch from API only if parent didn't provide them
   useEffect(() => {
-    if (allUsers.length === 0) {
-      base44.entities.User.filter({ is_active: true }).then(setAllUsersLocal).catch(() => {});
-    }
-  }, []);
+    if (allUsers.length > 0) { setAllUsersLocal(allUsers); return; }
+    base44.entities.User.filter({ is_active: true }).then(setAllUsersLocal).catch(() => {});
+  }, [allUsers]);
 
   // Load and poll
   useEffect(() => {

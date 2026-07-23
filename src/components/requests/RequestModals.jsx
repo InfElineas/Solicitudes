@@ -36,7 +36,7 @@ const modalStyle = { background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,
 
 function ModalWrapper({ title, subtitle, onClose, children, wide }) {
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose(); } };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);

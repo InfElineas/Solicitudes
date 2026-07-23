@@ -88,7 +88,7 @@ function ReportForm({ user, activos, kbArticles, incidents, onClose, onSaved }) 
   const set = (k, v) => setFormState(f => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose(); } };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
@@ -346,13 +346,13 @@ function ReportForm({ user, activos, kbArticles, incidents, onClose, onSaved }) 
                 <Paperclip className="w-3.5 h-3.5" /> Adjuntar archivo
               </button>
               <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.doc,.docx,.xlsx,.csv" className="hidden" onChange={handleFiles} />
-              {attachments.map((a, i) => (
-                <span key={i} className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg"
+              {attachments.map((a) => (
+                <span key={a.name} className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg"
                   style={{ background: 'hsl(217,33%,18%)', color: a.uploading ? 'hsl(215,20%,50%)' : '#4ade80' }}>
                   {a.uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
                   {a.name}
                   {!a.uploading && (
-                    <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                    <button type="button" onClick={() => setAttachments(prev => prev.filter(x => x.name !== a.name))}
                       className="ml-1 hover:text-red-400"><X className="w-3 h-3" /></button>
                   )}
                 </span>
@@ -447,7 +447,7 @@ function ResolveModal({ incident, techs, onClose, onSaved }) {
   const setF = (k, v) => setFormState(f => ({ ...f, [k]: v }));
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose(); } };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
@@ -672,8 +672,8 @@ function ResolveModal({ incident, techs, onClose, onSaved }) {
 }
 
 export default function Incidents() {
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [managing, setManaging] = useState(null);
   const [chatIncident, setChatIncident] = useState(null);
@@ -684,8 +684,6 @@ export default function Incidents() {
   const setRecurrentOnly = (valOrFn) => setSP(p => { const n = new URLSearchParams(p); const cur = p.get('recurrent') === '1'; const next = typeof valOrFn === 'function' ? valOrFn(cur) : valOrFn; next ? n.set('recurrent', '1') : n.delete('recurrent'); return n; });
   const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
   const qc = useQueryClient();
-
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
   const isAdmin = user?.role === 'admin';
   const isAuditor = user?.role === 'auditor';
@@ -722,15 +720,13 @@ export default function Incidents() {
 
   const techs = users.filter(u => u.role === 'support' || u.department?.toLowerCase() === 'soporte');
 
-  const myIncidents = isStaff ? incidents : incidents.filter(i => i.created_by === user?.email);
-
-  const recurrentCount = myIncidents.filter(i => (i.recurrence_count || 0) >= 2).length;
+  const recurrentCount = incidents.filter(i => (i.recurrence_count || 0) >= 2).length;
 
   const filtered = useMemo(() => {
-    let list = statusFilter === 'all' ? myIncidents : myIncidents.filter(i => i.status === statusFilter);
+    let list = statusFilter === 'all' ? incidents : incidents.filter(i => i.status === statusFilter);
     if (recurrentOnly) list = list.filter(i => (i.recurrence_count || 0) >= 2);
     return list;
-  }, [myIncidents, statusFilter, recurrentOnly]);
+  }, [incidents, statusFilter, recurrentOnly]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['incidents'] });
 
