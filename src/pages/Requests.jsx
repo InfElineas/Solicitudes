@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
@@ -625,6 +625,9 @@ export default function Requests() {
   const { user } = useAuth();
   const [sp, setSP] = useSearchParams();
   const [showNew, setShowNew] = useState(false);
+  const [autoOpenReq, setAutoOpenReq] = useState(null);
+  const [autoHistory, setAutoHistory] = useState([]);
+  const [autoWorklogs, setAutoWorklogs] = useState([]);
   const qc = useQueryClient();
 
   const search   = sp.get('q') || '';
@@ -747,6 +750,22 @@ export default function Requests() {
   };
 
   const techUsers = users.filter(u => u.role === 'admin' || u.role === 'support');
+
+  // Auto-open request detail from ?open=<id> (e.g. from notification click)
+  useEffect(() => {
+    const openId = sp.get('open');
+    if (!openId || !requests.length || autoOpenReq) return;
+    const found = requests.find(r => r.id === openId);
+    if (!found) return;
+    Promise.all([
+      base44.entities.RequestHistory.filter({ request_id: openId }, '-created_date'),
+      base44.entities.Worklog.filter({ request_id: openId }, '-created_date'),
+    ]).then(([hist, wl]) => {
+      setAutoHistory(hist);
+      setAutoWorklogs(wl);
+      setAutoOpenReq(found);
+    }).catch(() => setAutoOpenReq(found));
+  }, [requests, sp]);
 
   return (
     <div>
@@ -928,6 +947,20 @@ export default function Requests() {
           onClose={() => setShowNew(false)}
           onSaved={() => { setShowNew(false); refetch(); toast.success('Solicitud creada'); }}
           user={user}
+        />
+      )}
+
+      {/* Auto-open from notification */}
+      {autoOpenReq && (
+        <DetailModal
+          request={autoOpenReq}
+          history={autoHistory}
+          worklogs={autoWorklogs}
+          user={user}
+          onClose={() => {
+            setAutoOpenReq(null);
+            setSP(p => { const n = new URLSearchParams(p); n.delete('open'); return n; });
+          }}
         />
       )}
     </div>

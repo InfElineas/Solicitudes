@@ -52,7 +52,10 @@ const TYPE_CONFIG = {
 };
 
 function getTypeConfig(type) {
-  return TYPE_CONFIG[type] || TYPE_CONFIG.info;
+  if (TYPE_CONFIG[type]) return TYPE_CONFIG[type];
+  // incident_ prefix — strip and resolve base type
+  if (type?.startsWith('incident_')) return TYPE_CONFIG[type.slice(9)] || TYPE_CONFIG.info;
+  return TYPE_CONFIG.info;
 }
 
 // ── Icono con fondo de color ───────────────────────────────────────────────────
@@ -71,7 +74,10 @@ function TypeBadge({ type }) {
 
 // ── Ruta de navegación según tipo ─────────────────────────────────────────────
 function resolveRoute(n) {
-  if (n.request_id) return '/Requests';
+  if (n.request_id) {
+    if (n.type?.startsWith('incident_')) return `/Incidents?open=${n.request_id}`;
+    return `/Requests?open=${n.request_id}`;
+  }
   if (n.type === 'guardia_turno') return '/Guards';
   return null;
 }

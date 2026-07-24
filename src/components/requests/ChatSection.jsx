@@ -47,9 +47,10 @@ export default function ChatSection({ entityType, entityId, user, participants =
       Promise.all(others.map(p =>
         base44.entities.Notification.create({
           user_id: p.email,
-          type: 'comment',
+          type: entityType === 'incident' ? 'incident_comment' : 'comment',
           title: `💬 ${user?.full_name || user?.email} te envió un mensaje`,
           message: `"${preview}"`,
+          request_id: entityId,
           is_read: false,
         })
       )).catch(() => {});
