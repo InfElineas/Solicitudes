@@ -47,6 +47,7 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
+import Panel from './pages/Panel';
 import Requests from './pages/Requests';
 import Departments from './pages/Departments';
 import ManageUsers from './pages/ManageUsers';
@@ -64,6 +65,7 @@ import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
+    "Panel": Panel,
     "Requests": Requests,
     "Departments": Departments,
     "ManageUsers": ManageUsers,
@@ -80,7 +82,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "Requests",
+    mainPage: "Panel",
     Pages: PAGES,
     Layout: __Layout,
 };

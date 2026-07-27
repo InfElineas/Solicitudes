@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import {
   FileText, BarChart2, Trash2, Users, Building2,
-  ChevronLeft, LogOut, Zap, AlertTriangle, Shield, Package, BookOpen, ShieldCheck,
+  ChevronLeft, LogOut, Zap, AlertTriangle, Shield, Package, BookOpen, ShieldCheck, LayoutDashboard,
 } from 'lucide-react';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import UserProfileModal from '@/components/profile/UserProfileModal';
@@ -12,6 +12,7 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 import WelcomeModal from '@/components/WelcomeModal';
 
 const NAV = [
+  { name: 'Panel',                 path: '/Panel',           icon: LayoutDashboard, roles: ['admin', 'support', 'jefe', 'employee', 'auditor'] },
   { name: 'Solicitudes',           path: '/Requests',        icon: FileText,    roles: ['admin', 'support', 'jefe', 'auditor'] },
   { name: 'Mi historial',          path: '/UserHistory',     icon: FileText,    roles: ['employee'] },
   { name: 'Incidencias',           path: '/Incidents',       icon: AlertTriangle, roles: ['admin', 'support', 'employee', 'jefe', 'auditor'] },

@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table, AlertTriangle, MessageSquare, BookOpen, Bookmark, X } from 'lucide-react';
+import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table, AlertTriangle, MessageSquare, BookOpen, Bookmark, X, Clock, Users, TrendingUp, TrendingDown, Timer } from 'lucide-react';
 import { getSLAInfo, SEMAPHORE_COLOR } from '@/lib/slaUtils';
 import EvidenceModal from '../components/requests/EvidenceModal';
 import RequestsTable from '../components/requests/RequestsTable';
@@ -231,6 +231,11 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
   const [showEvidence, setShowEvidence] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [showBlockedModal, setShowBlockedModal] = useState(null);
+  const [showQuickWorklog, setShowQuickWorklog] = useState(false);
+  const [wlHours, setWlHours] = useState('');
+  const [wlMins, setWlMins] = useState('');
+  const [wlNote, setWlNote] = useState('');
+  const [wlSaving, setWlSaving] = useState(false);
   const [history, setHistory] = useState([]);
   const [worklogs, setWorklogs] = useState([]);
   const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
@@ -457,6 +462,26 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
 
   const saved = () => { setModal(null); onRefresh(); };
 
+  const handleQuickWorklog = async (e) => {
+    e.preventDefault();
+    const totalMins = (parseInt(wlHours || 0, 10) * 60) + parseInt(wlMins || 0, 10);
+    if (!totalMins) return;
+    setWlSaving(true);
+    try {
+      await base44.entities.Worklog.create({
+        request_id: req.id,
+        user_id: user?.email,
+        user_name: user?.full_name || user?.email,
+        minutes: totalMins,
+        note: wlNote.trim(),
+      });
+      toast.success(`${Math.floor(totalMins / 60)}h ${totalMins % 60}m registrados`);
+      setShowQuickWorklog(false);
+      setWlHours(''); setWlMins(''); setWlNote('');
+    } catch { toast.error('Error al registrar tiempo'); }
+    setWlSaving(false);
+  };
+
   const isAssignedToMe = req.assigned_to_id === user?.email;
   const isFinalized = statusKey === 'finalizado' || statusKey === 'rechazado' || statusKey === 'cancelado';
   const [showApprove, setShowApprove] = useState(false);
@@ -478,8 +503,19 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           <Pill label={req.priority} colorCfg={pc} />
           <Pill label={req.status} colorCfg={sc} />
         </div>
-        <div className="text-right text-xs shrink-0" style={{ color: 'hsl(215,20%,55%)' }}>
-          {req.estimated_hours ? <span>{req.estimated_hours}h estimadas</span> : null}
+        <div className="text-right text-xs shrink-0 space-y-0.5" style={{ color: 'hsl(215,20%,55%)' }}>
+          {/* #3 Estimado vs Real */}
+          {req.actual_hours > 0 && req.estimated_hours > 0 ? (() => {
+            const diff = req.actual_hours - req.estimated_hours;
+            const pct = Math.round(Math.abs(diff) / req.estimated_hours * 100);
+            const over = diff > 0;
+            return (
+              <div className="flex items-center justify-end gap-1 font-medium" style={{ color: over ? '#f87171' : '#4ade80' }}>
+                {over ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                <span>{req.estimated_hours}h → {req.actual_hours}h ({over ? '+' : '-'}{pct}%)</span>
+              </div>
+            );
+          })() : req.estimated_hours ? <span>{req.estimated_hours}h estimadas</span> : null}
           {req.estimated_due && <div>Compromiso {new Date(req.estimated_due).toLocaleDateString('es')}</div>}
           {req.assigned_to_id && <div>Asignado a <span className="text-blue-400">{
             (users.find(u => u.email === req.assigned_to_id)?.display_name) ||
@@ -517,6 +553,20 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           </span>
         )}
       </div>
+
+      {/* #5 Tiempo en estado actual */}
+      {!isFinalized && req.updated_date && (() => {
+        const days = Math.floor((Date.now() - new Date(req.updated_date)) / 86400000);
+        if (days < 1) return null;
+        const urgent = days >= 5;
+        return (
+          <div className="flex items-center gap-1 text-[10px]" style={{ color: urgent ? '#fbbf24' : 'hsl(215,20%,40%)' }}>
+            <Clock className="w-2.5 h-2.5" />
+            <span>En <em>{req.status}</em> hace {days} día{days !== 1 ? 's' : ''}</span>
+            {urgent && <span style={{ color: '#fbbf24' }}>⚠</span>}
+          </div>
+        );
+      })()}
 
       {/* SLA Semaphore */}
       {(() => {
@@ -589,7 +639,50 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           <ActionBtn label="↩ Devolver a desarrollo" color="gray" onClick={() => setShowReturnModal(true)} />
         )}
         {canManage && <ActionBtn label="Eliminar" color="red" onClick={handleDelete} />}
+        {/* #2 Worklog rápido */}
+        {(canManage || isAssignedToMe) && !isFinalized && (
+          <button
+            onClick={() => setShowQuickWorklog(v => !v)}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors hover:bg-white/10"
+            style={{ color: showQuickWorklog ? '#60a5fa' : 'hsl(215,20%,55%)', border: '1px solid hsl(217,33%,22%)' }}
+            title="Registrar tiempo rápido"
+          >
+            <Timer className="w-3 h-3" /> Tiempo
+          </button>
+        )}
       </div>
+
+      {/* #2 QuickWorklog form */}
+      {showQuickWorklog && (
+        <form onSubmit={handleQuickWorklog} className="flex flex-wrap items-end gap-2 pt-2 pb-1 px-2 rounded-lg" style={{ background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,22%)' }}>
+          <div className="flex items-center gap-1">
+            <Timer className="w-3 h-3 shrink-0" style={{ color: '#60a5fa' }} />
+            <input type="number" min="0" max="23" value={wlHours} onChange={e => setWlHours(e.target.value)}
+              placeholder="h" className="w-10 px-1 py-0.5 rounded text-xs text-center text-white outline-none"
+              style={{ background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' }} />
+            <span className="text-xs" style={{ color: 'hsl(215,20%,50%)' }}>h</span>
+            <input type="number" min="0" max="59" value={wlMins} onChange={e => setWlMins(e.target.value)}
+              placeholder="min" className="w-12 px-1 py-0.5 rounded text-xs text-center text-white outline-none"
+              style={{ background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' }} />
+            <span className="text-xs" style={{ color: 'hsl(215,20%,50%)' }}>min</span>
+          </div>
+          <input type="text" value={wlNote} onChange={e => setWlNote(e.target.value)} placeholder="Nota (opcional)"
+            className="flex-1 min-w-[120px] px-2 py-0.5 rounded text-xs text-white outline-none"
+            style={{ background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' }} />
+          <div className="flex gap-1">
+            <button type="submit" disabled={wlSaving || (!wlHours && !wlMins)}
+              className="px-2 py-0.5 rounded text-xs font-medium disabled:opacity-40 transition-opacity"
+              style={{ background: 'hsl(217,91%,45%)', color: 'white' }}>
+              {wlSaving ? '...' : 'Guardar'}
+            </button>
+            <button type="button" onClick={() => setShowQuickWorklog(false)}
+              className="px-2 py-0.5 rounded text-xs hover:bg-white/10"
+              style={{ color: 'hsl(215,20%,55%)' }}>
+              ✕
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Modals */}
       {modal === 'edit' && <RequestFormModal request={req} departments={departments} onClose={() => setModal(null)} onSaved={saved} user={user} />}
@@ -617,6 +710,71 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
     </div>
   );
 });
+
+// ── #4 Vista de cola por técnico ─────────────────────────────────────────────
+function TechQueueView({ requests, user, users, departments, onRefresh, commentCounts }) {
+  const active = requests.filter(r => {
+    const s = normalizeStatus(r.status);
+    return s !== 'finalizado' && s !== 'rechazado' && s !== 'cancelado';
+  });
+
+  const groups = {};
+  active.forEach(r => {
+    const key = r.assigned_to_id || '__unassigned__';
+    if (!groups[key]) groups[key] = { name: r.assigned_to_name || (r.assigned_to_id ? r.assigned_to_id : 'Sin asignar'), reqs: [] };
+    groups[key].reqs.push(r);
+  });
+
+  // Sort: unassigned last, then by count desc
+  const sorted = Object.entries(groups).sort(([ka, a], [kb, b]) => {
+    if (ka === '__unassigned__') return 1;
+    if (kb === '__unassigned__') return -1;
+    return b.reqs.length - a.reqs.length;
+  });
+
+  if (sorted.length === 0) return (
+    <div className="text-center py-16 text-gray-500 rounded-xl" style={{ background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' }}>
+      No hay solicitudes activas.
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {sorted.map(([key, group]) => {
+        const slaBreached = group.reqs.filter(r => getSLAInfo(r).semaphore === 'breached').length;
+        const slaWarning = group.reqs.filter(r => getSLAInfo(r).semaphore === 'warning').length;
+        const isMe = key === user?.email;
+        return (
+          <div key={key}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                style={{ background: isMe ? 'hsl(217,91%,35%)' : 'hsl(222,47%,22%)' }}>
+                {(group.name[0] || '?').toUpperCase()}
+              </div>
+              <span className="text-sm font-semibold text-white">{group.name}{isMe ? ' (yo)' : ''}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,70%)' }}>
+                {group.reqs.length} activa{group.reqs.length !== 1 ? 's' : ''}
+              </span>
+              {slaBreached > 0 && <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'hsl(0,50%,18%)', color: '#f87171' }}>⚠ {slaBreached} vencida{slaBreached !== 1 ? 's' : ''}</span>}
+              {slaWarning > 0 && <span className="text-xs px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'hsl(38,50%,15%)', color: '#fbbf24' }}>{slaWarning} por vencer</span>}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pl-10">
+              {group.reqs
+                .sort((a, b) => {
+                  const sa = getSLAInfo(a); const sb = getSLAInfo(b);
+                  const order = { breached: 0, warning: 1, ok: 2, unknown: 3, closed: 4 };
+                  return (order[sa.semaphore] ?? 3) - (order[sb.semaphore] ?? 3);
+                })
+                .map(req => (
+                  <RequestCard key={req.id} req={req} user={user} users={users} departments={departments} onRefresh={onRefresh} commentCounts={commentCounts} />
+                ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const PAGE_SIZES = [10, 20, 30, 50];
 const _FPM = { status: 'status', dept: 'dept', request_type: 'type', level: 'level', assigned: 'assigned', requester: 'requester', priority: 'priority', dateFrom: 'from', dateTo: 'to' };
@@ -799,6 +957,15 @@ export default function Requests() {
               <Table className="w-3.5 h-3.5" /><span className="hidden sm:inline">Tabla</span>
             </button>
             <button
+              onClick={() => setViewMode('queue')}
+              aria-pressed={viewMode === 'queue'}
+              className="px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors"
+              style={{ background: viewMode === 'queue' ? 'hsl(217,91%,35%)' : 'hsl(222,47%,14%)', color: viewMode === 'queue' ? 'white' : 'hsl(215,20%,55%)' }}
+              title="Cola por técnico"
+            >
+              <Users className="w-3.5 h-3.5" /><span className="hidden sm:inline">Cola</span>
+            </button>
+            <button
               onClick={() => setViewMode('kanban')}
               aria-pressed={viewMode === 'kanban'}
               className="px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors"
@@ -899,7 +1066,13 @@ export default function Requests() {
       </div>
 
       {/* Kanban, Table or List view */}
-      {viewMode === 'kanban' ? (
+      {viewMode === 'queue' ? (
+        isLoading ? (
+          <div className="text-center py-16 text-gray-500">Cargando...</div>
+        ) : (
+          <TechQueueView requests={filtered} user={user} users={users} departments={departments} onRefresh={refetch} commentCounts={commentCounts} />
+        )
+      ) : viewMode === 'kanban' ? (
         isLoading ? (
           <div className="text-center py-16 text-gray-500">Cargando...</div>
         ) : (
