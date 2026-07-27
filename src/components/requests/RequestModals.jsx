@@ -72,7 +72,7 @@ function ModalWrapper({ title, subtitle, onClose, children, wide }) {
 }
 
 // ---- CREATE / EDIT REQUEST MODAL ----
-export function RequestFormModal({ request, departments = [], onClose, onSaved, user }) {
+export function RequestFormModal({ request, departments = [], onClose, onSaved, user, initialValues = {} }) {
   const isEdit = !!request;
   const role = user?.role || 'employee';
   const isTechnical = role === 'admin' || role === 'support';
@@ -89,10 +89,11 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
   ];
 
   const [form, setForm] = useState({
-    title: request?.title || '',
-    description: request?.description || '',
-    request_type: request?.request_type || '',
+    title: request?.title || initialValues.title || '',
+    description: request?.description || initialValues.description || '',
+    request_type: request?.request_type || initialValues.request_type || '',
     origin: request?.origin || '',
+    system_name: request?.system_name || initialValues.system_name || '',
     urgency: 'Normal', // solo formulario simplificado
     level: request?.level || '',
     estimated_hours: request?.estimated_hours ? String(request.estimated_hours) : '',
@@ -174,6 +175,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
           estimated_due: form.estimated_due || null,
         }),
         file_urls: readyUrls,
+        ...(form.system_name ? { system_name: form.system_name } : {}),
       };
       if (isEdit) {
         await base44.entities.Request.update(request.id, payload);
@@ -349,6 +351,10 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
               ℹ️ {typeHint}
             </p>
           )}
+        </div>
+        <div>
+          <label className={labelCls}>Sistema / Aplicación afectada</label>
+          <input value={form.system_name} onChange={e => set('system_name', e.target.value)} className={inputCls} style={inputStyle} placeholder="Ej: SAP, ERP, Portal Web..." />
         </div>
 
         {/* Formulario simplificado para employee/jefe */}

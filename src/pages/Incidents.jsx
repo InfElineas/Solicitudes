@@ -71,13 +71,16 @@ function ReportForm({ user, activos, kbArticles, incidents, onClose, onSaved }) 
 
   const kbSuggestions = useMemo(() => {
     if (!form.category && !form.tool_name) return [];
+    const q = form.tool_name?.toLowerCase();
     return kbArticles.filter(a =>
       a.is_published !== false && (
         (form.category && a.category === form.category) ||
-        (form.tool_name && a.title?.toLowerCase().includes(form.tool_name.toLowerCase())) ||
-        (form.tool_name && a.tags?.some(t => t.toLowerCase().includes(form.tool_name.toLowerCase())))
+        (q && a.title?.toLowerCase().includes(q)) ||
+        (q && a.tags?.some(t => t.toLowerCase().includes(q))) ||
+        (q && a.content?.toLowerCase().includes(q)) ||
+        (q && a.symptom?.toLowerCase().includes(q))
       )
-    ).slice(0, 3);
+    ).slice(0, 5);
   }, [form.category, form.tool_name, kbArticles]);
   const [attachments, setAttachments] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -872,6 +875,13 @@ export default function Incidents() {
               Hay {recurrentCount} incidencias con {'>'}= 2 reportes en los últimos 30 días. Considera crear una solicitud de mejora permanente.
             </p>
           </div>
+          <button
+            onClick={() => navigate(`/Requests?new=1&prefill_type=Mejora+%2F+Solicitud+de+cambio&prefill_title=Causa+ra%C3%ADz%3A+reincidencia+detectada&prefill_desc=Se+han+detectado+${recurrentCount}+incidencias+repetidas+en+los+últimos+30+días.+Se+solicita+revisión+de+causa+raíz+y+mejora+permanente.`)}
+            className="ml-auto shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-80 transition-opacity"
+            style={{ background: 'hsl(0,60%,25%)', color: '#fca5a5', border: '1px solid hsl(0,60%,35%)' }}
+          >
+            → Crear solicitud
+          </button>
         </div>
       )}
 

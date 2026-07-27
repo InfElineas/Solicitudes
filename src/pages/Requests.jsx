@@ -5,7 +5,7 @@ import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { List, Plus, Search, SlidersHorizontal, Kanban, Paperclip, Table, AlertTriangle, MessageSquare, BookOpen, Bookmark, X, Clock, Users, TrendingUp, TrendingDown, Timer } from 'lucide-react';
-import { getSLAInfo, SEMAPHORE_COLOR } from '@/lib/slaUtils';
+import { getSLAInfo, SEMAPHORE_COLOR, isOutsideBusinessHours } from '@/lib/slaUtils';
 import EvidenceModal from '../components/requests/EvidenceModal';
 import RequestsTable from '../components/requests/RequestsTable';
 import AdvancedFilters from '../components/requests/AdvancedFilters';
@@ -542,6 +542,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         {req.origin && <span className="px-1.5 py-0.5 rounded" style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,65%)' }}>
           {{'WhatsApp':'💬','Presencial':'🏢','Email':'📧','Web':'🌐'}[req.origin] || '📌'} {req.origin}
         </span>}
+        {req.system_name && <span className="px-1.5 py-0.5 rounded" style={{ background: 'hsl(250,30%,20%)', color: '#c4b5fd' }}>🖥 {req.system_name}</span>}
         {req.file_urls?.length > 0 && (
           <span className="px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,65%)' }}>
             <Paperclip className="w-2.5 h-2.5" />{req.file_urls.length}
@@ -578,6 +579,9 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
               <span style={{ color: SEMAPHORE_COLOR[sla.semaphore] }} className="font-semibold flex items-center gap-1">
                 {sla.semaphore === 'breached' && <AlertTriangle className="w-3 h-3" />}
                 {sla.semaphore === 'breached' ? sla.label : `SLA ${sla.pct}%`}
+                {sla.semaphore === 'breached' && isOutsideBusinessHours() && (
+                  <span className="font-normal text-[9px]" style={{ color: 'hsl(215,20%,50%)' }}>(fuera de horario hábil)</span>
+                )}
               </span>
               {sla.semaphore !== 'breached' && (
                 <span style={{ color: 'hsl(215,20%,45%)' }}>{sla.label}</span>
@@ -783,6 +787,7 @@ export default function Requests() {
   const { user } = useAuth();
   const [sp, setSP] = useSearchParams();
   const [showNew, setShowNew] = useState(false);
+  const [prefillValues, setPrefillValues] = useState(null);
   const [autoOpenReq, setAutoOpenReq] = useState(null);
   const [autoHistory, setAutoHistory] = useState([]);
   const [autoWorklogs, setAutoWorklogs] = useState([]);
@@ -872,6 +877,19 @@ export default function Requests() {
       const order = { Alta: 0, Media: 1, Baja: 2 };
       r = [...r].sort((a, b) => (order[a.priority] ?? 1) - (order[b.priority] ?? 1));
     }
+    if (sort === 'sla_urgency') {
+      const slaOrder = { breached: 0, red: 1, yellow: 2, green: 3, unknown: 4, closed: 5 };
+      r = [...r].sort((a, b) => {
+        const sa = getSLAInfo(a); const sb = getSLAInfo(b);
+        const oa = slaOrder[sa.semaphore] ?? 4; const ob = slaOrder[sb.semaphore] ?? 4;
+        if (oa !== ob) return oa - ob;
+        // same urgency bucket → sort by estimated_due ASC (nulls last)
+        if (a.estimated_due && b.estimated_due) return new Date(a.estimated_due) - new Date(b.estimated_due);
+        if (a.estimated_due) return -1;
+        if (b.estimated_due) return 1;
+        return 0;
+      });
+    }
     return r;
   }, [requests, search, filters, sort, canSeeAll, user?.email]);
 
@@ -908,6 +926,17 @@ export default function Requests() {
   };
 
   const techUsers = users.filter(u => u.role === 'admin' || u.role === 'support');
+
+  // Open new-request form pre-filled from ?new=1&prefill_* params (e.g. from reincidence banner)
+  useEffect(() => {
+    if (sp.get('new') !== '1') return;
+    const title = sp.get('prefill_title') || '';
+    const description = sp.get('prefill_desc') || '';
+    const request_type = sp.get('prefill_type') || '';
+    setPrefillValues({ title, description, request_type });
+    setShowNew(true);
+    setSP(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('prefill_title'); n.delete('prefill_desc'); n.delete('prefill_type'); return n; });
+  }, []);
 
   // Auto-open request detail from ?open=<id> (e.g. from notification click)
   useEffect(() => {
@@ -1047,6 +1076,7 @@ export default function Requests() {
           <option value="created_desc">Creación: más recientes</option>
           <option value="created_asc">Creación: más antiguas</option>
           <option value="priority">Prioridad: Alta primero</option>
+          <option value="sla_urgency">SLA: más urgentes primero</option>
         </select>
       </div>
 
@@ -1117,9 +1147,10 @@ export default function Requests() {
       {showNew && canCreateRequests && (
         <RequestFormModal
           departments={departments}
-          onClose={() => setShowNew(false)}
-          onSaved={() => { setShowNew(false); refetch(); toast.success('Solicitud creada'); }}
+          onClose={() => { setShowNew(false); setPrefillValues(null); }}
+          onSaved={() => { setShowNew(false); setPrefillValues(null); refetch(); toast.success('Solicitud creada'); }}
           user={user}
+          initialValues={prefillValues || {}}
         />
       )}
 

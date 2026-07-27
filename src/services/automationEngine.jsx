@@ -21,7 +21,8 @@ const TRIGGER_LABELS = {
 const ACTION_LABELS = {
   send_email: 'Enviar email',
   escalate_priority: 'Escalar prioridad',
-  send_notification: 'Enviar notificación',
+  send_notification: 'Enviar notificación (asignado)',
+  notify_requester: 'Notificar al solicitante',
   change_status: 'Cambiar estado',
 };
 
@@ -131,6 +132,23 @@ async function executeAction(rule, req, user) {
         is_read: false,
       });
       return `Notificación enviada a ${userId}`;
+    }
+
+    case 'notify_requester': {
+      const reqUserId = req.requester_id;
+      if (!reqUserId) return 'Sin solicitante';
+      const message = (cfg.message || 'Tu solicitud "{{title}}" ha sido actualizada. Estado: {{status}}.')
+        .replace('{{title}}', req.title).replace('{{status}}', req.status);
+      await base44.entities.Notification.create({
+        user_id: reqUserId,
+        type: 'info',
+        title: `⚙️ ${rule.name}`,
+        message,
+        request_id: req.id,
+        request_title: req.title,
+        is_read: false,
+      });
+      return `Notificación al solicitante ${reqUserId}`;
     }
 
     case 'change_status': {

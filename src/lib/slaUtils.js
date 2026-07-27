@@ -82,6 +82,18 @@ function formatOverdue(ms) {
   return `Vencida hace ${d}d`;
 }
 
+/**
+ * Returns true when the current moment is outside business hours (Mon–Fri 08:00–18:00).
+ * Used to annotate SLA breaches that happen during weekends or outside working hours.
+ */
+export function isOutsideBusinessHours() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  const h = now.getHours();
+  if (day === 0 || day === 6) return true;
+  return h < 8 || h >= 18;
+}
+
 /** Color CSS para cada semáforo */
 export const SEMAPHORE_COLOR = {
   green:   '#22c55e',
