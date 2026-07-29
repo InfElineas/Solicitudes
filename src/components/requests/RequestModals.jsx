@@ -1058,7 +1058,32 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
       )}
 
       {tab === 'worklogs' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
+          {canManage && (
+            <form onSubmit={handleAddWorklog} className="flex flex-wrap gap-2 items-end p-3 rounded-lg" style={{ background: 'hsl(222,47%,16%)', border: '1px solid hsl(217,33%,22%)' }}>
+              <div>
+                <label className="block text-[10px] mb-1" style={{ color: 'hsl(215,20%,55%)' }}>Horas</label>
+                <input
+                  type="number" min="0" step="0.25" value={wlHours} onChange={e => setWlHours(e.target.value)}
+                  placeholder="1.5" className="w-20 px-2 py-1.5 rounded text-xs outline-none"
+                  style={{ background: 'hsl(222,47%,12%)', border: '1px solid hsl(217,33%,28%)', color: 'white' }}
+                />
+              </div>
+              <div className="flex-1 min-w-32">
+                <label className="block text-[10px] mb-1" style={{ color: 'hsl(215,20%,55%)' }}>Nota</label>
+                <input
+                  type="text" value={wlDesc} onChange={e => setWlDesc(e.target.value)}
+                  placeholder="Ej: Diagnóstico del problema..." className="w-full px-2 py-1.5 rounded text-xs outline-none"
+                  style={{ background: 'hsl(222,47%,12%)', border: '1px solid hsl(217,33%,28%)', color: 'white' }}
+                />
+              </div>
+              <button type="submit" disabled={wlSaving || !wlHours || !wlDesc.trim()}
+                className="px-3 py-1.5 rounded text-xs font-medium disabled:opacity-50"
+                style={{ background: 'hsl(217,91%,40%)', color: 'white' }}>
+                {wlSaving ? '...' : '+ Registrar'}
+              </button>
+            </form>
+          )}
           {worklogs.length === 0 ? (
             <p className="text-sm text-gray-500">Sin registros de tiempo.</p>
           ) : worklogs.map((w, i) => (
