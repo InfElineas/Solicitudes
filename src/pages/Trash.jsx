@@ -137,7 +137,7 @@ export default function Trash() {
   const paginated = filtered.slice(page * pageSize, (page + 1) * pageSize);
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5">
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -153,7 +153,7 @@ export default function Trash() {
 
       {/* Stats */}
       {allItems.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={cardStyle}>
             <Archive className="w-5 h-5 shrink-0" style={{ color: 'hsl(215,20%,50%)' }} />
             <div>
@@ -199,27 +199,26 @@ export default function Trash() {
       </div>
 
       {/* Lista */}
-      <div className="rounded-xl overflow-hidden" style={cardStyle}>
-        {isLoading ? (
-          <div className="p-8 text-center" style={{ color: 'hsl(215,20%,40%)' }}>Cargando...</div>
-        ) : paginated.length === 0 ? (
-          <div className="py-12 text-center">
-            <Archive className="w-10 h-10 mx-auto mb-3" style={{ color: 'hsl(215,20%,22%)' }} />
-            <p className="text-sm font-medium" style={{ color: 'hsl(215,20%,45%)' }}>Papelera vacía</p>
-            <p className="text-xs mt-1" style={{ color: 'hsl(215,20%,30%)' }}>
-              Las solicitudes eliminadas aparecen aquí durante 30 días.
-            </p>
-          </div>
-        ) : (
-          <div>
-            {paginated.map((item, idx) => {
-              const { snap, daysLeft } = item;
-              const priority = PRIORITY_COLORS[snap.priority];
-              const isCritical = daysLeft <= 3;
-              return (
-                <div key={item.id}
-                  className="flex items-start gap-3 px-4 py-4"
-                  style={{ borderBottom: idx < paginated.length - 1 ? '1px solid hsl(217,33%,15%)' : undefined }}>
+      {isLoading ? (
+        <div className="p-8 text-center rounded-xl" style={{ ...cardStyle, color: 'hsl(215,20%,40%)' }}>Cargando...</div>
+      ) : paginated.length === 0 ? (
+        <div className="py-12 text-center rounded-xl" style={cardStyle}>
+          <Archive className="w-10 h-10 mx-auto mb-3" style={{ color: 'hsl(215,20%,22%)' }} />
+          <p className="text-sm font-medium" style={{ color: 'hsl(215,20%,45%)' }}>Papelera vacía</p>
+          <p className="text-xs mt-1" style={{ color: 'hsl(215,20%,30%)' }}>
+            Las solicitudes eliminadas aparecen aquí durante 30 días.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {paginated.map((item) => {
+            const { snap, daysLeft } = item;
+            const priority = PRIORITY_COLORS[snap.priority];
+            const isCritical = daysLeft !== null && daysLeft <= 3;
+            return (
+              <div key={item.id}
+                className="flex items-start gap-3 px-4 py-4 rounded-xl"
+                style={cardStyle}>
 
                   {/* Ícono */}
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
@@ -295,9 +294,8 @@ export default function Trash() {
                 </div>
               );
             })}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Paginación */}
       {filtered.length > pageSize && (
