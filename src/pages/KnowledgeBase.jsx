@@ -294,6 +294,8 @@ export default function KnowledgeBase() {
       a = a.filter(x =>
         x.title?.toLowerCase().includes(s) ||
         x.content?.toLowerCase().includes(s) ||
+        x.symptom?.toLowerCase().includes(s) ||
+        x.cause?.toLowerCase().includes(s) ||
         x.tags?.some(t => t.toLowerCase().includes(s))
       );
     }

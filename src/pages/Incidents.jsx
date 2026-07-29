@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
-import { AlertTriangle, Plus, CheckCircle2, Clock, Wrench, X, Paperclip, Loader2, MessageSquare, BookOpen, Trash2, Repeat2 } from 'lucide-react';
+import { AlertTriangle, Plus, CheckCircle2, Clock, Wrench, X, Paperclip, Loader2, MessageSquare, BookOpen, Trash2, Repeat2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ChatSection from '../components/requests/ChatSection';
@@ -731,6 +731,7 @@ export default function Incidents() {
   const recurrentOnly  = sp.get('recurrent') === '1';
   const setStatusFilter  = (val) => setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('status', val) : n.delete('status'); return n; });
   const setRecurrentOnly = (valOrFn) => setSP(p => { const n = new URLSearchParams(p); const cur = p.get('recurrent') === '1'; const next = typeof valOrFn === 'function' ? valOrFn(cur) : valOrFn; next ? n.set('recurrent', '1') : n.delete('recurrent'); return n; });
+  const [incSearch, setIncSearch] = useState('');
   const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
   const qc = useQueryClient();
 
@@ -782,8 +783,16 @@ export default function Incidents() {
   const filtered = useMemo(() => {
     let list = statusFilter === 'all' ? incidents : incidents.filter(i => i.status === statusFilter);
     if (recurrentOnly) list = list.filter(i => (i.recurrence_count || 0) >= 2);
+    if (incSearch.trim()) {
+      const s = incSearch.toLowerCase();
+      list = list.filter(i =>
+        i.tool_name?.toLowerCase().includes(s) ||
+        i.description?.toLowerCase().includes(s) ||
+        i.reporter_name?.toLowerCase().includes(s)
+      );
+    }
     return list;
-  }, [incidents, statusFilter, recurrentOnly]);
+  }, [incidents, statusFilter, recurrentOnly, incSearch]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['incidents'] });
 
@@ -891,6 +900,16 @@ export default function Incidents() {
 
       {/* Filter */}
       <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'hsl(215,20%,45%)' }} />
+          <input
+            value={incSearch}
+            onChange={e => setIncSearch(e.target.value)}
+            placeholder="Buscar incidencia..."
+            className="pl-7 pr-3 py-1.5 rounded-lg text-xs outline-none w-48"
+            style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,22%)', color: 'white' }}
+          />
+        </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer" style={selectStyle}>
           <option value="all">Todos los estados</option>

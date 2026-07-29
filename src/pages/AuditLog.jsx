@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/lib/AuthContext';
 import {
   ShieldCheck, Search, RotateCcw, Download, FileText,
   AlertTriangle, CheckCircle2, RefreshCw, Clock, Mail
@@ -216,6 +217,7 @@ function EmptyAuditState() {
 const PAGE_SIZE = 40;
 
 export default function AuditLog() {
+  const { user } = useAuth();
   const [tab,           setTab]           = useState('audit');
   const [search,        setSearch]        = useState('');
   const [filterEntity,  setFilterEntity]  = useState('all');
@@ -302,6 +304,14 @@ export default function AuditLog() {
     setSearch(''); setFilterEntity('all'); setFilterAction('all');
     setFilterUser('all'); setPeriodFilter('30d'); setPage(0);
   };
+
+  if (user && user.role !== 'admin' && user.role !== 'auditor') {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-sm" style={{ color: 'hsl(215,20%,45%)' }}>No tienes permiso para ver esta sección.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

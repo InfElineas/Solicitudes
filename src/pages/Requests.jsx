@@ -642,6 +642,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         {canReturnToDevelopment && (
           <ActionBtn label="↩ Devolver a desarrollo" color="gray" onClick={() => setShowReturnModal(true)} />
         )}
+        {canManage && !isFinalized && <ActionBtn label="Rechazar" color="red" onClick={() => setModal('reject')} />}
         {canManage && <ActionBtn label="Eliminar" color="red" onClick={handleDelete} />}
         {/* #2 Worklog rápido */}
         {(canManage || isAssignedToMe) && !isFinalized && (

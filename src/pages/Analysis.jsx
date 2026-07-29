@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend
+  LineChart, Line, CartesianGrid, Legend, Cell,
 } from 'recharts';
 import {
   FileText, CheckCircle2, Loader2, Eye, Clock, Award,
@@ -840,7 +840,7 @@ export default function Analysis() {
                     <Tooltip contentStyle={tooltipStyle} formatter={v => [`${v}h`, 'Prom. resolución']} />
                     <Bar dataKey="horas" radius={[0, 4, 4, 0]}>
                       {incidentStats.avgHrsByCritArr.map((entry) => (
-                        <rect key={entry.name} fill={entry.name === 'Crítico' ? '#f87171' : entry.name === 'Alto' ? '#fb923c' : entry.name === 'Medio' ? '#fbbf24' : '#4ade80'} />
+                        <Cell key={entry.name} fill={entry.name === 'Crítico' ? '#f87171' : entry.name === 'Alto' ? '#fb923c' : entry.name === 'Medio' ? '#fbbf24' : '#4ade80'} />
                       ))}
                     </Bar>
                   </BarChart>
