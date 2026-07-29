@@ -236,9 +236,11 @@ export default function Assets() {
   const search      = sp.get('q') || '';
   const filterTipo  = sp.get('tipo') || 'all';
   const filterEstado = sp.get('estado') || 'all';
-  const setSearch      = (val) => setSP(p => { const n = new URLSearchParams(p); val ? n.set('q', val) : n.delete('q'); return n; });
-  const setFilterTipo  = (val) => setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('tipo', val) : n.delete('tipo'); return n; });
-  const setFilterEstado = (val) => setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('estado', val) : n.delete('estado'); return n; });
+  const setSearch      = (val) => { setAssetPage(0); setSP(p => { const n = new URLSearchParams(p); val ? n.set('q', val) : n.delete('q'); return n; }); };
+  const setFilterTipo  = (val) => { setAssetPage(0); setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('tipo', val) : n.delete('tipo'); return n; }); };
+  const setFilterEstado = (val) => { setAssetPage(0); setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('estado', val) : n.delete('estado'); return n; }); };
+  const [assetPage, setAssetPage] = useState(0);
+  const ASSET_PAGE_SIZE = 18;
   const [showForm, setShowForm] = useState(false);
   const [editActivo, setEditActivo] = useState(null);
   const [detailActivo, setDetailActivo] = useState(null);
@@ -274,6 +276,10 @@ export default function Assets() {
     if (filterEstado !== 'all') a = a.filter(x => x.estado === filterEstado);
     return a;
   }, [activos, search, filterTipo, filterEstado]);
+
+  const assetTotalPages = Math.ceil(filtered.length / ASSET_PAGE_SIZE);
+  const assetPageSafe = Math.min(assetPage, Math.max(0, assetTotalPages - 1));
+  const paginatedAssets = filtered.slice(assetPageSafe * ASSET_PAGE_SIZE, (assetPageSafe + 1) * ASSET_PAGE_SIZE);
 
   const handleDelete = async (id) => {
     try {
@@ -444,6 +450,15 @@ export default function Assets() {
           {ESTADOS.map(s => <option key={s}>{s}</option>)}
         </select>
         <span className="text-xs" style={{ color: muted }}>{filtered.length} activo(s)</span>
+        {assetTotalPages > 1 && (
+          <div className="flex items-center gap-1 ml-auto">
+            <button onClick={() => setAssetPage(p => Math.max(0, p - 1))} disabled={assetPageSafe === 0}
+              className="px-2 py-1 rounded text-xs disabled:opacity-30 hover:bg-white/10">‹</button>
+            <span className="text-xs" style={{ color: muted }}>{assetPageSafe + 1} / {assetTotalPages}</span>
+            <button onClick={() => setAssetPage(p => Math.min(assetTotalPages - 1, p + 1))} disabled={assetPageSafe === assetTotalPages - 1}
+              className="px-2 py-1 rounded text-xs disabled:opacity-30 hover:bg-white/10">›</button>
+          </div>
+        )}
       </div>
 
       {/* List */}
@@ -456,7 +471,7 @@ export default function Assets() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {filtered.map(a => {
+          {paginatedAssets.map(a => {
             const estadoCfg = ESTADO_COLORS[a.estado] || ESTADO_COLORS['Activo'];
             const incCount = incidentCountById[a.id] || 0;
             const isRecurring = incCount >= 3;

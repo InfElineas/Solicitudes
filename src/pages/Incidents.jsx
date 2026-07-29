@@ -729,9 +729,11 @@ export default function Incidents() {
   const [sp, setSP] = useSearchParams();
   const statusFilter   = sp.get('status') || 'all';
   const recurrentOnly  = sp.get('recurrent') === '1';
-  const setStatusFilter  = (val) => setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('status', val) : n.delete('status'); return n; });
-  const setRecurrentOnly = (valOrFn) => setSP(p => { const n = new URLSearchParams(p); const cur = p.get('recurrent') === '1'; const next = typeof valOrFn === 'function' ? valOrFn(cur) : valOrFn; next ? n.set('recurrent', '1') : n.delete('recurrent'); return n; });
+  const setStatusFilter  = (val) => { setIncPage(0); setSP(p => { const n = new URLSearchParams(p); val !== 'all' ? n.set('status', val) : n.delete('status'); return n; }); };
+  const setRecurrentOnly = (valOrFn) => { setIncPage(0); setSP(p => { const n = new URLSearchParams(p); const cur = p.get('recurrent') === '1'; const next = typeof valOrFn === 'function' ? valOrFn(cur) : valOrFn; next ? n.set('recurrent', '1') : n.delete('recurrent'); return n; }); };
   const [incSearch, setIncSearch] = useState('');
+  const [incPage, setIncPage] = useState(0);
+  const INC_PAGE_SIZE = 20;
   const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
   const qc = useQueryClient();
 
@@ -793,6 +795,10 @@ export default function Incidents() {
     }
     return list;
   }, [incidents, statusFilter, recurrentOnly, incSearch]);
+
+  const incTotalPages = Math.ceil(filtered.length / INC_PAGE_SIZE);
+  const incPageSafe = Math.min(incPage, Math.max(0, incTotalPages - 1));
+  const paginated = filtered.slice(incPageSafe * INC_PAGE_SIZE, (incPageSafe + 1) * INC_PAGE_SIZE);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['incidents'] });
 
@@ -925,6 +931,15 @@ export default function Incidents() {
           <Repeat2 className="w-3 h-3" /> Reincidentes
         </button>
         <span className="text-xs" style={{ color: muted }}>{filtered.length} incidencia(s)</span>
+        {incTotalPages > 1 && (
+          <div className="flex items-center gap-1 ml-auto">
+            <button onClick={() => setIncPage(p => Math.max(0, p - 1))} disabled={incPageSafe === 0}
+              className="px-2 py-1 rounded text-xs disabled:opacity-30 hover:bg-white/10">‹</button>
+            <span className="text-xs" style={{ color: muted }}>{incPageSafe + 1} / {incTotalPages}</span>
+            <button onClick={() => setIncPage(p => Math.min(incTotalPages - 1, p + 1))} disabled={incPageSafe === incTotalPages - 1}
+              className="px-2 py-1 rounded text-xs disabled:opacity-30 hover:bg-white/10">›</button>
+          </div>
+        )}
       </div>
 
       {/* List */}
@@ -938,7 +953,7 @@ export default function Incidents() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(inc => (
+          {paginated.map(inc => (
             <div key={inc.id} className="rounded-xl p-4" style={cardStyle}>
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex-1 min-w-0">
