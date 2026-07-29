@@ -559,13 +559,13 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
       const updatedRequest = {
         ...request,
         assigned_to_id: techId || null,
-        assigned_to_name: tech?.display_name || tech?.display_name || tech?.full_name || techId || null,
+        assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
         estimated_hours: hours ? Number(hours) : null,
         estimated_due: due || null,
       };
       const updatePayload = {
         assigned_to_id: techId || null,
-        assigned_to_name: tech?.display_name || tech?.display_name || tech?.full_name || techId || null,
+        assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
         estimated_hours: hours ? Number(hours) : null,
         estimated_due: due || null,
       };
@@ -653,7 +653,7 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
                 >
                   <OnlineDot lastSeen={u.last_seen_at} />
                   <div className="flex-1 min-w-0">
-                    <span className="font-medium block truncate">{u.display_name || u.display_name || u.full_name || u.email}</span>
+                    <span className="font-medium block truncate">{u.display_name || u.full_name || u.email}</span>
                     {u.department && <span className="text-[10px] block truncate" style={{ color: 'hsl(215,20%,50%)' }}>{u.department}</span>}
                   </div>
                   <span className="text-[10px]" style={{ color: onlineStatus === 'online' ? '#4ade80' : onlineStatus === 'away' ? '#fbbf24' : 'hsl(215,20%,40%)' }}>

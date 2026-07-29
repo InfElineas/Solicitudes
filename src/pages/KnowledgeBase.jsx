@@ -330,11 +330,6 @@ export default function KnowledgeBase() {
           <p className="text-xs mt-0.5" style={{ color: muted }}>Soluciones a problemas técnicos frecuentes</p>
         </div>
         <div className="flex items-center gap-2">
-          <a href="/manual_usuario.pdf" download="Manual_Usuario_Plataforma_Solicitudes.pdf"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium hover:opacity-90"
-            style={{ background: 'hsl(217,33%,22%)', color: 'hsl(215,20%,75%)' }}>
-            <Download className="w-4 h-4" /> Manual de usuario
-          </a>
           {isStaff && (
             <button onClick={() => setShowForm(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
@@ -347,7 +342,7 @@ export default function KnowledgeBase() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {CATEGORIES.slice(0, 4).map(cat => {
+        {CATEGORIES.map(cat => {
           const count = articles.filter(a => a.category === cat && a.is_published !== false).length;
           return (
             <div key={cat} className="rounded-xl p-3 cursor-pointer hover:opacity-80 transition-opacity" style={cardStyle}

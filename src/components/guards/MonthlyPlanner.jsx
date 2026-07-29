@@ -69,7 +69,7 @@ export default function MonthlyPlanner({ techs, user, onClose, onSaved }) {
     if (days.length === 0) { toast.error('Selecciona al menos un día'); return; }
     setSaving(true);
     const tech = techs.find(t => t.email === techId);
-    const techName = tech?.display_name || tech?.display_name || tech?.full_name || techId;
+    const techName = tech?.display_name || tech?.full_name || techId;
 
     const guardias = days.map(d => {
       const inicio = new Date(year, month, d, ...shiftStart.split(':').map(Number));
@@ -82,7 +82,7 @@ export default function MonthlyPlanner({ techs, user, onClose, onSaved }) {
         tipo,
         estado: 'programada',
         creada_por: user?.email,
-        creada_por_nombre: user?.display_name || user?.display_name || user?.full_name || user?.email,
+        creada_por_nombre: user?.display_name || user?.full_name || user?.email,
       };
     });
 
@@ -124,7 +124,7 @@ export default function MonthlyPlanner({ techs, user, onClose, onSaved }) {
             <label className={labelCls}>Técnico *</label>
             <select value={techId} onChange={e => setTechId(e.target.value)} className={inputCls + " cursor-pointer"} style={inputStyle}>
               <option value="">Seleccionar técnico...</option>
-              {techs.map(t => <option key={t.email} value={t.email}>{t.display_name || t.display_name || t.full_name || t.email}</option>)}
+              {techs.map(t => <option key={t.email} value={t.email}>{t.display_name || t.full_name || t.email}</option>)}
             </select>
           </div>
           <div>

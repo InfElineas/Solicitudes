@@ -108,36 +108,6 @@ export default function WelcomeModal({ user, onClose }) {
           </div>
         </div>
 
-        {/* Manual de usuario */}
-        <div
-          className="mx-6 mb-5 rounded-xl p-4 flex items-start gap-3"
-          style={{ background: 'hsl(217,60%,12%)', border: '1px solid hsl(217,60%,24%)' }}
-        >
-          <BookOpen className="w-5 h-5 shrink-0 mt-0.5 text-blue-400" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white">Manual de usuario</p>
-            <p className="text-xs mt-0.5 mb-3" style={{ color: 'hsl(215,20%,60%)' }}>
-              Te recomendamos leerlo antes de comenzar. Explica paso a paso cómo usar cada función de la plataforma.
-            </p>
-            <a
-              href="/manual_usuario.pdf"
-              download="Manual_Usuario_Plataforma_Solicitudes.pdf"
-              onClick={handleDownload}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:opacity-90 active:scale-95"
-              style={{
-                background: downloaded ? 'hsl(142,60%,20%)' : 'hsl(217,91%,45%)',
-                color: downloaded ? '#4ade80' : 'white',
-                border: downloaded ? '1px solid hsl(142,60%,32%)' : 'none',
-              }}
-            >
-              {downloaded
-                ? <><CheckCircle2 className="w-4 h-4" /> Descargado</>
-                : <><Download className="w-4 h-4" /> Descargar manual (PDF)</>
-              }
-            </a>
-          </div>
-        </div>
-
         {/* Botón para comenzar */}
         <div className="px-6 pb-6 pt-0">
           <button

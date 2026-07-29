@@ -261,7 +261,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
 
   const handleAttend = async () => {
     const newStatus = (req.status === 'Pendiente' || req.status === 'Retrasado') ? 'En Proceso' : req.status;
-    const assignedName = user?.display_name || user?.display_name || user?.full_name || user?.email;
+    const assignedName = user?.display_name || user?.full_name || user?.email;
     const startedAt = (newStatus === 'En Proceso' && !req.started_at) ? new Date().toISOString() : null;
     try {
       const { error: attendError } = await supabase.rpc('record_status_change', {
@@ -484,8 +484,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
 
   const isAssignedToMe = req.assigned_to_id === user?.email;
   const isFinalized = statusKey === 'finalizado' || statusKey === 'rechazado' || statusKey === 'cancelado';
-  const [showApprove, setShowApprove] = useState(false);
-  const isPendingApproval = false; // eliminado en protocolo v1.0
+  const isPendingApproval = false;
   const isInReview = statusKey === 'en validacion';
   const isPending = statusKey === 'pendiente';
   const isInProgress = statusKey === 'en proceso';
@@ -697,7 +696,6 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
       {modal === 'detail' && <DetailModal request={req} history={history} worklogs={worklogs} onClose={() => setModal(null)} user={user} />}
       {showEvidence && <EvidenceModal request={req} user={user} onClose={() => setShowEvidence(false)} onSaved={() => { setShowEvidence(false); onRefresh(); }} />}
       {showBlockedModal && <BlockedModal request={req} targetStatus={showBlockedModal} user={user} onClose={() => setShowBlockedModal(null)} onSaved={() => { setShowBlockedModal(null); onRefresh(); }} />}
-      {showApprove && <ApprovalModal request={req} user={user} onClose={() => setShowApprove(false)} onSaved={saved} />}
       {showReturnModal && (
         <ReturnToDevelopmentModal
           request={req}
