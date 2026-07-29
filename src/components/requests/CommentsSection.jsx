@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Paperclip, Send, X, Loader2, ImageIcon, FileText, AtSign } from 'lucide-react';
 import { sendMentionEmail, extractMentions } from '@/services/emailNotifications';
@@ -95,7 +95,7 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
         request_id: requestId,
         content: text.trim(),
         author_id: user?.email || '',
-        author_name: user?.full_name || user?.email || 'Anónimo',
+        author_name: user?.display_name || user?.full_name || user?.email || 'Anónimo',
         file_urls: readyUrls,
       });
 
@@ -109,7 +109,7 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
             user_id: uid,
             type: 'comment',
             title: '💬 Nuevo comentario en una solicitud',
-            message: `${user?.full_name || user?.email} comentó: "${text.trim().slice(0, 80)}${text.trim().length > 80 ? '...' : ''}"`,
+            message: `${user?.display_name || user?.full_name || user?.email} comentó: "${text.trim().slice(0, 80)}${text.trim().length > 80 ? '...' : ''}"`,
             request_id: requestId,
             request_title: requestInfo.title,
             is_read: false,
@@ -122,14 +122,14 @@ export default function CommentsSection({ requestId, user, allUsers = [] }) {
           sendMentionEmail({
             mentionedEmail: mu.email,
             mentionedName: mu.full_name,
-            commenterName: user?.full_name || user?.email,
+            commenterName: user?.display_name || user?.full_name || user?.email,
             commentText: text.trim(),
             request: requestInfo,
           }),
           base44.entities.Notification.create({
             user_id: mu.email,
             type: 'comment',
-            title: `💬 ${user?.full_name || user?.email} te mencionó`,
+            title: `💬 ${user?.display_name || user?.full_name || user?.email} te mencionó`,
             message: `"${text.trim().slice(0, 100)}${text.trim().length > 100 ? '...' : ''}"`,
             request_id: requestId,
             request_title: requestInfo.title,

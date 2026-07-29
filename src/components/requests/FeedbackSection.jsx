@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Textarea } from "@/components/ui/textarea";
@@ -46,7 +46,7 @@ export default function FeedbackSection({ requestId, feedback, user }) {
       rating,
       comment,
       by_user_id: user?.email,
-      by_user_name: user?.full_name || user?.email,
+      by_user_name: user?.display_name || user?.full_name || user?.email,
     });
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+﻿import React, { useState, useMemo, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
@@ -56,7 +56,7 @@ function AssetForm({ activo, users, onClose, onSaved }) {
     const assignedUser = users.find(u => u.email === form.assigned_to);
     const payload = {
       ...form,
-      assigned_to_name: assignedUser?.full_name || form.assigned_to || null,
+      assigned_to_name: assignedUser?.display_name || assignedUser?.full_name || form.assigned_to || null,
       fecha_adquisicion: form.fecha_adquisicion ? new Date(form.fecha_adquisicion).toISOString() : null,
     };
     try {
@@ -118,7 +118,7 @@ function AssetForm({ activo, users, onClose, onSaved }) {
               <label className={labelCls}>Asignado a</label>
               <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} className={inputCls + " cursor-pointer"} style={inputStyle}>
                 <option value="">Sin asignar</option>
-                {users.map(u => <option key={u.email} value={u.email}>{u.full_name || u.email}</option>)}
+                {users.map(u => <option key={u.email} value={u.email}>{u.display_name || u.full_name || u.email}</option>)}
               </select>
             </div>
             <div>
@@ -279,7 +279,7 @@ export default function Assets() {
     try {
       await base44.entities.Activo.update(id, {
         is_deleted: true,
-        deleted_by_name: user?.full_name || user?.email || '',
+        deleted_by_name: user?.display_name || user?.full_name || user?.email || '',
       });
       qc.invalidateQueries({ queryKey: ['activos'] });
       setDeleteId(null);

@@ -15,7 +15,17 @@
       "PowerShell(python \"C:\\\\Users\\\\infor\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\7744e199-c712-4a32-983f-f890f6ff9e71\\\\306f64ee-8d82-462b-8004-3dfcd85810ca\\\\skills\\\\docx\\\\scripts\\\\office\\\\validate.py\" \"C:\\\\Users\\\\infor\\\\OneDrive\\\\Desktop\\\\Manual_Usuario_Plataforma_Solicitudes.docx\" 2>&1)",
       "Bash(xargs cat)",
       "mcp__visualize__read_me",
-      "mcp__visualize__show_widget"
+      "mcp__visualize__show_widget",
+      "Bash(git commit -m ' *)",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__computer",
+      "mcp__claude-in-chrome__read_network_requests",
+      "mcp__claude-in-chrome__read_console_messages",
+      "mcp__claude-in-chrome__javascript_tool",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__tabs_create_mcp",
+      "mcp__claude-in-chrome__find",
+      "mcp__claude-in-chrome__form_input"
     ]
   }
 }

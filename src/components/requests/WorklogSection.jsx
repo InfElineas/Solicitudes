@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ export default function WorklogSection({ requestId, worklogs = [], user }) {
     createMutation.mutate({
       request_id: requestId,
       user_id: user?.email,
-      user_name: user?.full_name || user?.email,
+      user_name: user?.display_name || user?.full_name || user?.email,
       minutes: Number(minutes),
       note,
     });

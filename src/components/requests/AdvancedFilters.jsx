@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { X, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -135,7 +135,7 @@ export default function AdvancedFilters({ filters, onFiltersChange, departments 
               <label className={labelCls} style={muted}>Asignado a</label>
               <select value={filters.assigned || 'all'} onChange={e => set('assigned', e.target.value)} className={`w-full ${selectCls}`} style={inputStyle}>
                 <option value="all">Todos</option>
-                {techUsers.map(u => <option key={u.email} value={u.email}>{u.full_name || u.email}</option>)}
+                {techUsers.map(u => <option key={u.email} value={u.email}>{u.display_name || u.full_name || u.email}</option>)}
               </select>
             </div>
           )}

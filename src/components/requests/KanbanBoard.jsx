@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
@@ -190,7 +190,7 @@ export default function KanbanBoard({ requests, user, users, onRefresh }) {
       p_to_status:       newStatus,
       p_note:            'Movido via tablero Kanban',
       p_by_user_id:      user?.email || '',
-      p_by_user_name:    user?.full_name || user?.email || '',
+      p_by_user_name:    user?.display_name || user?.full_name || user?.email || '',
       p_started_at:      extra.started_at || null,
       p_completion_date: extra.completion_date || null,
       p_actual_hours:    extra.actual_hours || null,

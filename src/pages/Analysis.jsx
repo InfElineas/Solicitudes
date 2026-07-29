@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -417,7 +417,7 @@ export default function Analysis() {
     });
 
     return {
-      name: t.full_name || t.email,
+      name: t.display_name || t.full_name || t.email,
       email: t.email,
       Asignadas: assigned.length,
       'En Proceso': assigned.filter(r => r.status === 'En Proceso').length,
@@ -466,7 +466,7 @@ export default function Analysis() {
       media.filter(i => i.status === 'Resuelto').length * 2 +
       baja.filter(i => i.status === 'Resuelto').length;
     return {
-      name: t.full_name || t.email, email: t.email,
+      name: t.display_name || t.full_name || t.email, email: t.email,
       Asignadas: assigned.length, Resueltas: resolved.length,
       Pendientes: pending, 'En atención': inProgress, 'No reproducible': noRepro,
       avgHrs,
@@ -671,7 +671,7 @@ export default function Analysis() {
           <select value={techFilter} onChange={e => setTechFilter(e.target.value)}
             className="px-3 py-1.5 rounded-lg text-xs outline-none cursor-pointer" style={selectStyle}>
             <option value="all">Todos los técnicos</option>
-            {techs.map(t => <option key={t.email} value={t.email}>{t.full_name || t.email}</option>)}
+            {techs.map(t => <option key={t.email} value={t.email}>{t.display_name || t.full_name || t.email}</option>)}
           </select>
           <button
             onClick={() => setShowReportModal(true)}
@@ -697,11 +697,11 @@ export default function Analysis() {
           <div className="rounded-xl p-4 flex flex-wrap items-center gap-4" style={{ background: 'hsl(217,60%,14%)', border: '1px solid hsl(217,60%,22%)' }}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg font-bold" style={{ background: 'hsl(217,91%,25%)', color: '#60a5fa' }}>
-                {(user.full_name || user.email).charAt(0).toUpperCase()}
+                {(user.display_name || user.full_name || user.email).charAt(0).toUpperCase()}
               </div>
               <div>
                 <p className="text-xs font-semibold text-white">Mi rendimiento</p>
-                <p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>{user.full_name || user.email}</p>
+                <p className="text-[10px]" style={{ color: 'hsl(215,20%,55%)' }}>{user.display_name || user.full_name || user.email}</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-4 text-center">

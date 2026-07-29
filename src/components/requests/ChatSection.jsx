@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Send, MessageSquare } from 'lucide-react';
 
@@ -37,7 +37,7 @@ export default function ChatSection({ entityType, entityId, user, participants =
       entity_type: entityType,
       entity_id: entityId,
       sender_id: user?.email,
-      sender_name: user?.full_name || user?.email,
+      sender_name: user?.display_name || user?.full_name || user?.email,
       message: msg,
     });
     // Notificar a los otros participantes
@@ -48,7 +48,7 @@ export default function ChatSection({ entityType, entityId, user, participants =
         base44.entities.Notification.create({
           user_id: p.email,
           type: entityType === 'incident' ? 'incident_comment' : 'comment',
-          title: `💬 ${user?.full_name || user?.email} te envió un mensaje`,
+          title: `💬 ${user?.display_name || user?.full_name || user?.email} te envió un mensaje`,
           message: `"${preview}"`,
           request_id: entityId,
           is_read: false,

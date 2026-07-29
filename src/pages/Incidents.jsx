@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -499,7 +499,7 @@ function ResolveModal({ incident, techs, onClose, onSaved }) {
         }
       }
       const tech = techs.find(t => t.email === form.assigned_to);
-      if (tech) updates.assigned_to_name = tech.full_name || tech.email;
+      if (tech) updates.assigned_to_name = tech.display_name || tech.full_name || tech.email;
       const evidence_urls = attachments.filter(a => a.url).map(a => a.url);
       if (evidence_urls.length > 0) {
         const urlsText = '\n\n📎 Evidencia adjunta:\n' + evidence_urls.map((u, i) => `• Archivo ${i + 1}: ${u}`).join('\n');
@@ -660,7 +660,7 @@ function ResolveModal({ incident, techs, onClose, onSaved }) {
             <select value={form.assigned_to} onChange={e => setF('assigned_to', e.target.value)}
               className="w-full px-3 py-2 rounded-lg text-sm cursor-pointer" style={inputStyle2}>
               <option value="">Sin asignar</option>
-              {techs.map(t => <option key={t.email} value={t.email}>{t.full_name || t.email}</option>)}
+              {techs.map(t => <option key={t.email} value={t.email}>{t.display_name || t.full_name || t.email}</option>)}
             </select>
           </div>
           <div>
@@ -796,7 +796,7 @@ export default function Incidents() {
         try {
           await base44.entities.Incident.update(inc.id, {
             is_deleted: true,
-            deleted_by_name: user?.full_name || user?.email || '',
+            deleted_by_name: user?.display_name || user?.full_name || user?.email || '',
           });
           if (inc.reporter_email && inc.reporter_email !== user?.email) {
             base44.entities.Notification.create({

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
@@ -41,7 +41,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
       p_request_id:       request.id,
       p_status:           newStatus,
       p_approved_by:      user?.email || '',
-      p_approved_by_name: user?.full_name || user?.email || '',
+      p_approved_by_name: user?.display_name || user?.full_name || user?.email || '',
       p_approved_at:      new Date().toISOString(),
       p_approval_notes:   notes || null,
       p_rejection_reason: isApprove ? null : (notes || 'Rechazado por administración'),
@@ -60,7 +60,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
       to_status:   newStatus,
       note:        isApprove ? `Aprobado. ${notes}` : `Rechazado. ${notes}`,
       by_user_id:  user?.email,
-      by_user_name: user?.full_name || user?.email,
+      by_user_name: user?.display_name || user?.full_name || user?.email,
     });
 
     if (request.requester_id) {
@@ -261,7 +261,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
 
   const handleAttend = async () => {
     const newStatus = (req.status === 'Pendiente' || req.status === 'Retrasado') ? 'En Proceso' : req.status;
-    const assignedName = user?.display_name || user?.full_name || user?.email;
+    const assignedName = user?.display_name || user?.display_name || user?.full_name || user?.email;
     const startedAt = (newStatus === 'En Proceso' && !req.started_at) ? new Date().toISOString() : null;
     try {
       const { error: attendError } = await supabase.rpc('record_status_change', {
@@ -269,7 +269,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         p_to_status:        newStatus,
         p_note:             'Atendida por técnico',
         p_by_user_id:       user?.email || '',
-        p_by_user_name:     user?.full_name || user?.email || '',
+        p_by_user_name:     user?.display_name || user?.full_name || user?.email || '',
         p_assigned_to_id:   user?.email || null,
         p_assigned_to_name: assignedName || null,
         p_started_at:       startedAt,
@@ -280,7 +280,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           user_id: req.requester_id,
           type: 'status_change',
           title: '🔧 Tu solicitud está siendo atendida',
-          message: `${user?.full_name || user?.email} está atendiendo tu solicitud "${req.title}".`,
+          message: `${user?.display_name || user?.full_name || user?.email} está atendiendo tu solicitud "${req.title}".`,
           request_id: req.id,
           request_title: req.title,
           is_read: false,
@@ -319,7 +319,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
             p_to_status:       'Finalizado',
             p_note:            'Aprobada y finalizada',
             p_by_user_id:      user?.email || '',
-            p_by_user_name:    user?.full_name || user?.email || '',
+            p_by_user_name:    user?.display_name || user?.full_name || user?.email || '',
             p_completion_date: completionDate,
             p_actual_hours:    actualHours,
           });
@@ -371,7 +371,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         p_to_status:    'En Proceso',
         p_note:         `Devuelta a proceso: ${reason}`,
         p_by_user_id:   user?.email || '',
-        p_by_user_name: user?.full_name || user?.email || '',
+        p_by_user_name: user?.display_name || user?.full_name || user?.email || '',
       });
       if (returnError) throw returnError;
       if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
@@ -402,7 +402,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         p_to_status:    'En Proceso',
         p_note:         'Bloqueante resuelto, solicitud reanudada',
         p_by_user_id:   user?.email || '',
-        p_by_user_name: user?.full_name || user?.email || '',
+        p_by_user_name: user?.display_name || user?.full_name || user?.email || '',
       });
       if (resumeError) throw resumeError;
       if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
@@ -444,7 +444,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
             original_request_id: req.id,
             snapshot: JSON.stringify(req),
             deleted_by_id: user?.email,
-            deleted_by_name: user?.full_name || user?.email,
+            deleted_by_name: user?.display_name || user?.full_name || user?.email,
             expire_at: expireAt.toISOString(),
           });
         } catch (err) {
@@ -471,7 +471,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
       await base44.entities.Worklog.create({
         request_id: req.id,
         user_id: user?.email,
-        user_name: user?.full_name || user?.email,
+        user_name: user?.display_name || user?.full_name || user?.email,
         minutes: totalMins,
         note: wlNote.trim(),
       });

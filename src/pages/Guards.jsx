@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Shield, Plus, Clock, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User, Trash2, ArrowUpDown, BarChart2 } from 'lucide-react';
@@ -95,7 +95,7 @@ function GuardiaForm({ guardia, techs, user, guardias, onClose, onSaved }) {
     setSaving(true);
     const payload = {
       tecnico_id:     form.tecnico_id,
-      tecnico_nombre: selectedTech?.full_name || selectedTech?.email || form.tecnico_id,
+      tecnico_nombre: selectedTech?.display_name || selectedTech?.full_name || selectedTech?.email || form.tecnico_id,
       inicio:         new Date(form.inicio).toISOString(),
       fin:            new Date(form.fin).toISOString(),
       tipo:           form.tipo,
@@ -115,7 +115,7 @@ function GuardiaForm({ guardia, techs, user, guardias, onClose, onSaved }) {
       await base44.entities.Guardia.create({
         ...payload,
         creada_por:        user?.email,
-        creada_por_nombre: user?.full_name || user?.email,
+        creada_por_nombre: user?.display_name || user?.full_name || user?.email,
       });
       await base44.entities.Notification.create({
         user_id: form.tecnico_id, type: 'assigned',
@@ -142,7 +142,7 @@ function GuardiaForm({ guardia, techs, user, guardias, onClose, onSaved }) {
             <select value={form.tecnico_id} onChange={e => set('tecnico_id', e.target.value)}
               className={inputCls + ' cursor-pointer'} style={inputStyle}>
               <option value="">Seleccionar técnico...</option>
-              {techs.map(t => <option key={t.email} value={t.email}>{t.full_name || t.email}</option>)}
+              {techs.map(t => <option key={t.email} value={t.email}>{t.display_name || t.full_name || t.email}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -212,19 +212,19 @@ function ReplaceTechModal({ guardia, techs, user, onClose, onSaved }) {
     await base44.entities.Guardia.update(guardia.id, {
       estado: 'reemplazada',
       reemplazado_por_id:     newTechId,
-      reemplazado_por_nombre: tech?.full_name || tech?.email,
+      reemplazado_por_nombre: tech?.display_name || tech?.full_name || tech?.email,
       observaciones: (guardia.observaciones || '') + ` [Reemplazado por ${tech?.full_name || newTechId}: ${note}]`,
     });
     await base44.entities.Guardia.create({
       tecnico_id:        newTechId,
-      tecnico_nombre:    tech?.full_name || tech?.email,
+      tecnico_nombre:    tech?.display_name || tech?.full_name || tech?.email,
       inicio:            guardia.inicio,
       fin:               guardia.fin,
       tipo:              guardia.tipo || 'normal',
       estado:            'programada',
       observaciones:     `Reemplazo de ${guardia.tecnico_nombre}. ${note}`,
       creada_por:        user?.email,
-      creada_por_nombre: user?.full_name || user?.email,
+      creada_por_nombre: user?.display_name || user?.full_name || user?.email,
     });
     await base44.entities.Notification.create({
       user_id: newTechId, type: 'assigned',
@@ -255,7 +255,7 @@ function ReplaceTechModal({ guardia, techs, user, onClose, onSaved }) {
               className={inputCls + ' cursor-pointer'} style={inputStyle}>
               <option value="">Seleccionar...</option>
               {techs.filter(t => t.email !== guardia.tecnico_id).map(t => (
-                <option key={t.email} value={t.email}>{t.full_name || t.email}</option>
+                <option key={t.email} value={t.email}>{t.display_name || t.full_name || t.email}</option>
               ))}
             </select>
           </div>
@@ -467,13 +467,13 @@ function SelfAssignModal({ user, guardias, onClose, onSaved }) {
     try {
       await base44.entities.Guardia.create({
         tecnico_id: user.email,
-        tecnico_nombre: user.full_name || user.email,
+        tecnico_nombre: user.display_name || user.full_name || user.email,
         inicio: new Date(inicio).toISOString(),
         fin: new Date(fin).toISOString(),
         tipo: 'voluntaria',
         estado: 'programada',
         creada_por: user.email,
-        creada_por_nombre: user.full_name || user.email,
+        creada_por_nombre: user.display_name || user.full_name || user.email,
       });
       toast.success('Turno registrado correctamente');
       onSaved();

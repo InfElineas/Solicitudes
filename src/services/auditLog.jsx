@@ -1,4 +1,4 @@
-import { base44 } from '@/api/base44Client';
+﻿import { base44 } from '@/api/base44Client';
 
 /**
  * Log an audit event for an entity change.
@@ -14,7 +14,7 @@ export async function logAudit({ entityType, entityId, entityTitle, action, fiel
       old_value: oldValue != null ? String(oldValue) : null,
       new_value: newValue != null ? String(newValue) : null,
       by_user_id: user?.email || 'system',
-      by_user_name: user?.display_name || user?.full_name || user?.email || 'system',
+      by_user_name: user?.display_name || user?.display_name || user?.full_name || user?.email || 'system',
       snapshot: snapshot ? JSON.stringify(snapshot) : null,
     });
   } catch (e) {

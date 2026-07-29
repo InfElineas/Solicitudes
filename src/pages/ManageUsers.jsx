@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { UserPlus, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -123,7 +123,7 @@ export default function ManageUsers() {
     const target = users.find(u => u.id === id);
     try {
       await base44.entities.User.update(id, { is_active: false });
-      toast.success(`${target?.full_name || target?.email || 'Usuario'} desactivado`);
+      toast.success(`${target?.display_name || target?.full_name || target?.email || 'Usuario'} desactivado`);
       setDeleteId(null);
       loadUsers();
     } catch {
@@ -135,7 +135,7 @@ export default function ManageUsers() {
     const target = users.find(u => u.id === id);
     try {
       await base44.entities.User.update(id, { is_active: true });
-      toast.success(`${target?.full_name || target?.email || 'Usuario'} reactivado`);
+      toast.success(`${target?.display_name || target?.full_name || target?.email || 'Usuario'} reactivado`);
       loadUsers();
     } catch {
       toast.error('Error al reactivar usuario');
@@ -144,7 +144,7 @@ export default function ManageUsers() {
 
   const handleDelete = async (id) => {
     const target = users.find(u => u.id === id);
-    const nombre = target?.full_name || target?.email || 'usuario';
+    const nombre = target?.display_name || target?.full_name || target?.email || 'usuario';
     try {
       await base44.entities.User.delete(id);
       toast.success(`Usuario ${nombre} eliminado permanentemente`);
@@ -369,7 +369,7 @@ export default function ManageUsers() {
       {deleteId && (() => {
         const target = users.find(u => u.id === deleteId);
         const isInactive = target?.is_active === false;
-        const nombre = target?.full_name || target?.email || 'este usuario';
+        const nombre = target?.display_name || target?.full_name || target?.email || 'este usuario';
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
             <div className="rounded-xl p-6 w-full max-w-sm" style={modalStyle}>

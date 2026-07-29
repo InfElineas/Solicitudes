@@ -1,4 +1,4 @@
-import { base44 } from '@/api/base44Client';
+﻿import { base44 } from '@/api/base44Client';
 
 // Transiciones válidas — Protocolo Operativo v1.0
 const VALID_TRANSITIONS = {
@@ -40,7 +40,7 @@ export async function transitionRequestStatus(request, newStatus, note, user) {
     to_status: newStatus,
     note: note || '',
     by_user_id: user.email,
-    by_user_name: user.full_name || user.email,
+    by_user_name: user.display_name || user.full_name || user.email,
   });
 
   return { ...request, ...updateData };
@@ -54,7 +54,7 @@ export async function moveToTrash(request, user, ttlDays = 30) {
     original_request_id: request.id,
     snapshot: JSON.stringify(request),
     deleted_by_id: user.email,
-    deleted_by_name: user.full_name || user.email,
+    deleted_by_name: user.display_name || user.full_name || user.email,
     expire_at: expireAt.toISOString(),
   });
 

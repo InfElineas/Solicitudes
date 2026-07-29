@@ -197,7 +197,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
           status: 'Pendiente',
           is_deleted: false,
           requester_id: user?.email,
-          requester_name: user?.full_name || user?.email,
+          requester_name: user?.display_name || user?.full_name || user?.email,
         });
         // Notificar a admins y soporte de la nueva solicitud
         base44.entities.User.filter({ is_active: true }).then(allUsers => {
@@ -207,7 +207,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
               user_id: u.email,
               type: 'info',
               title: '📥 Nueva solicitud recibida',
-              message: `${user?.full_name || user?.email} creó: "${payload.title}"`,
+              message: `${user?.display_name || user?.full_name || user?.email} creó: "${payload.title}"`,
               request_id: created?.id,
               request_title: payload.title,
               is_read: false,
@@ -489,7 +489,7 @@ export function ClassifyModal({ request, onClose, onSaved, user }) {
         to_status: request.status,
         note: `${isReclassify ? 'Reclasificado' : 'Clasificado'}: Dificultad=${level}, Prioridad=${priority}`,
         by_user_id: user?.email,
-        by_user_name: user?.full_name || user?.email,
+        by_user_name: user?.display_name || user?.full_name || user?.email,
       });
       if (request.assigned_to_id) {
         await base44.entities.Notification.create({
@@ -559,13 +559,13 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
       const updatedRequest = {
         ...request,
         assigned_to_id: techId || null,
-        assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
+        assigned_to_name: tech?.display_name || tech?.display_name || tech?.full_name || techId || null,
         estimated_hours: hours ? Number(hours) : null,
         estimated_due: due || null,
       };
       const updatePayload = {
         assigned_to_id: techId || null,
-        assigned_to_name: tech?.display_name || tech?.full_name || techId || null,
+        assigned_to_name: tech?.display_name || tech?.display_name || tech?.full_name || techId || null,
         estimated_hours: hours ? Number(hours) : null,
         estimated_due: due || null,
       };
@@ -578,9 +578,9 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
           request_id: request.id,
           from_status: request.status,
           to_status: 'Pendiente',
-          note: `Reasignada a ${tech?.full_name || techId}`,
+          note: `Reasignada a ${tech?.display_name || tech?.full_name || techId}`,
           by_user_id: user?.email || '',
-          by_user_name: user?.full_name || user?.email || '',
+          by_user_name: user?.display_name || user?.full_name || user?.email || '',
         });
       }
       if (techId) {
@@ -595,7 +595,7 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
           request_title: request.title,
           is_read: false,
         });
-        await sendAssignedEmail(updatedRequest, techId, tech?.full_name || techId);
+        await sendAssignedEmail(updatedRequest, techId, tech?.display_name || tech?.full_name || techId);
       }
       if (isReassign && request.assigned_to_id && request.assigned_to_id !== techId) {
         await base44.entities.Notification.create({
@@ -614,7 +614,7 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
           user_id: request.requester_id,
           type: 'status_change',
           title: isReassign ? '🔄 Tu solicitud tiene un nuevo responsable' : '👤 Tu solicitud tiene un responsable asignado',
-          message: `La solicitud "${request.title}" fue asignada a ${tech?.full_name || techId}.`,
+          message: `La solicitud "${request.title}" fue asignada a ${tech?.display_name || tech?.full_name || techId}.`,
           request_id: request.id,
           request_title: request.title,
           is_read: false,
@@ -653,7 +653,7 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
                 >
                   <OnlineDot lastSeen={u.last_seen_at} />
                   <div className="flex-1 min-w-0">
-                    <span className="font-medium block truncate">{u.full_name || u.display_name || u.email}</span>
+                    <span className="font-medium block truncate">{u.display_name || u.display_name || u.full_name || u.email}</span>
                     {u.department && <span className="text-[10px] block truncate" style={{ color: 'hsl(215,20%,50%)' }}>{u.department}</span>}
                   </div>
                   <span className="text-[10px]" style={{ color: onlineStatus === 'online' ? '#4ade80' : onlineStatus === 'away' ? '#fbbf24' : 'hsl(215,20%,40%)' }}>
@@ -700,7 +700,7 @@ export function RejectModal({ request, onClose, onSaved, user }) {
         p_to_status:        'Rechazado',
         p_note:             reason,
         p_by_user_id:       user?.email || '',
-        p_by_user_name:     user?.full_name || user?.email || '',
+        p_by_user_name:     user?.display_name || user?.full_name || user?.email || '',
         p_rejection_reason: reason,
       });
       if (rejectError) throw rejectError;
@@ -858,7 +858,7 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
       await base44.entities.RequestWorkLog.create({
         request_id: request.id,
         user_id: user?.email,
-        user_name: user?.full_name || user?.display_name || user?.email,
+        user_name: user?.display_name || user?.display_name || user?.full_name || user?.email,
         hours: parseFloat(wlHours),
         description: wlDesc.trim(),
         logged_at: new Date().toISOString(),
@@ -1100,7 +1100,7 @@ export function BlockedModal({ request, targetStatus, user, onClose, onSaved }) 
         p_to_status:    targetStatus,
         p_note:         reason.trim(),
         p_by_user_id:   user?.email || '',
-        p_by_user_name: user?.full_name || user?.email || '',
+        p_by_user_name: user?.display_name || user?.full_name || user?.email || '',
       });
       if (blockedError) throw blockedError;
       if (request.requester_id && request.requester_id !== user?.email) {

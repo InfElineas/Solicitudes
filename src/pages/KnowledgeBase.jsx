@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -304,7 +304,7 @@ export default function KnowledgeBase() {
     try {
       await base44.entities.KnowledgeBase.update(id, {
         is_deleted: true,
-        deleted_by_name: user?.full_name || user?.email || '',
+        deleted_by_name: user?.display_name || user?.full_name || user?.email || '',
       });
       refresh();
       setDeleteId(null);

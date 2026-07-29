@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { supabase } from '@/api/supabaseClient';
 import { X, Paperclip, Link, FileText, Loader2 } from 'lucide-react';
@@ -64,7 +64,7 @@ export default function EvidenceModal({ request, user, onClose, onSaved }) {
         p_to_status:    'En Validación',
         p_note:         evidenceParts.join(' | ') || 'Evidencia adjunta como archivo',
         p_by_user_id:   user?.email || '',
-        p_by_user_name: user?.full_name || user?.email || '',
+        p_by_user_name: user?.display_name || user?.full_name || user?.email || '',
         p_file_urls:    allUrls,
       });
       if (evidenceError) throw evidenceError;
