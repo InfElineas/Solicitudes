@@ -77,11 +77,11 @@ export default function Departments() {
   const deptResolution = departments.map(d => ({ name: d.name, horas: statsMap[d.id]?.avg || 0 }));
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5">
       <h2 className="text-xl font-bold text-white">Departamentos</h2>
 
       {/* Stats banner */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 xl:grid-cols-6 gap-3">
         {[
           { label: 'Total', value: departments.length, icon: Building2, color: 'hsl(217,91%,45%)' },
           { label: 'Activos', value: activeCount, icon: Check, color: 'hsl(142,55%,40%)' },
@@ -126,7 +126,7 @@ export default function Departments() {
           <p className="text-sm" style={{ color: 'hsl(215,20%,45%)' }}>No hay departamentos aún.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {departments.map((dept, i) => {
             const stats = statsMap[dept.id] || { count: 0, avg: 0 };
             const color = DEPT_COLORS[i % DEPT_COLORS.length];
@@ -222,7 +222,7 @@ export default function Departments() {
 
       {/* Charts */}
       {departments.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
           <div className="rounded-xl p-5" style={cardStyle}>
             <h3 className="text-sm font-semibold text-white mb-3">Solicitudes por departamento</h3>
             {deptStats.every(d => d.total === 0) ? (
