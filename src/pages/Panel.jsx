@@ -49,7 +49,7 @@ function MyRequests({ requests }) {
     .filter(r => r.status !== 'Finalizado' && r.status !== 'Rechazado' && r.status !== 'Cancelado')
     .sort((a, b) => {
       const sa = getSLAInfo(a); const sb = getSLAInfo(b);
-      const ord = { breached: 0, warning: 1, ok: 2, unknown: 3, closed: 4 };
+      const ord = { breached: 0, red: 1, yellow: 2, green: 3, unknown: 4, closed: 5 };
       return (ord[sa.semaphore] ?? 3) - (ord[sb.semaphore] ?? 3);
     });
 
@@ -253,7 +253,7 @@ export default function Panel() {
   const activeReqs = myRequests.filter(r => r.status !== 'Finalizado' && r.status !== 'Rechazado' && r.status !== 'Cancelado');
   const activeIncs = myIncidents.filter(i => i.status !== 'Resuelto' && i.status !== 'Cerrado');
   const slaBreached = activeReqs.filter(r => getSLAInfo(r).semaphore === 'breached').length;
-  const slaWarning = activeReqs.filter(r => getSLAInfo(r).semaphore === 'warning').length;
+  const slaWarning = activeReqs.filter(r => getSLAInfo(r).semaphore === 'yellow').length;
 
   const weekStart = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;

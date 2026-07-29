@@ -855,13 +855,12 @@ export function DetailModal({ request, history = [], worklogs = [], onClose, use
     if (!wlHours || !wlDesc.trim()) return;
     setWlSaving(true);
     try {
-      await base44.entities.RequestWorkLog.create({
+      await base44.entities.Worklog.create({
         request_id: request.id,
         user_id: user?.email,
-        user_name: user?.display_name || user?.display_name || user?.full_name || user?.email,
-        hours: parseFloat(wlHours),
-        description: wlDesc.trim(),
-        logged_at: new Date().toISOString(),
+        user_name: user?.display_name || user?.full_name || user?.email,
+        minutes: Math.round(parseFloat(wlHours) * 60),
+        note: wlDesc.trim(),
       });
       queryClient.invalidateQueries({ queryKey: ['worklogs', request.id] });
       toast.success('Tiempo registrado');

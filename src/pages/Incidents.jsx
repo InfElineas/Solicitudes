@@ -1011,7 +1011,7 @@ export default function Incidents() {
                           inc_title: inc.tool_name || '',
                           inc_category: inc.category || 'Otro',
                           inc_description: inc.description || '',
-                          inc_resolution: inc.resolution_note || '',
+                          inc_resolution: inc.resolution_notes || '',
                         });
                         navigate(`/KnowledgeBase?${params.toString()}`);
                       }}

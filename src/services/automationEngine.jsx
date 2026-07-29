@@ -75,7 +75,7 @@ function matchesConditions(req, conditions) {
   if (!conditions) return true;
   if (conditions.status && req.status !== conditions.status) return false;
   if (conditions.priority && req.priority !== conditions.priority) return false;
-  if (conditions.type && req.type !== conditions.type) return false;
+  if (conditions.type && req.request_type !== conditions.type) return false;
   return true;
 }
 
