@@ -49,7 +49,7 @@ function ApprovalModal({ request, user, onClose, onSaved }) {
 
     if (error) {
       console.error('[ApprovalModal] rpc error:', error.message);
-      toast.error('Error al procesar. Inténtalo de nuevo.');
+      toast.error(`Error al procesar: ${error?.message || error?.details || 'Inténtalo de nuevo.'}`);
       setSaving(false);
       return;
     }
@@ -293,7 +293,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
       onRefresh();
     } catch (err) {
       console.error('[handleAttend]', err);
-      toast.error('Error al actualizar. Inténtalo de nuevo.');
+      toast.error(`Error al actualizar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
     }
   };
 
@@ -357,7 +357,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           onRefresh();
         } catch (err) {
           console.error('[handleFinalizar]', err);
-          toast.error('Error al finalizar. Inténtalo de nuevo.');
+          toast.error(`Error al finalizar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
         }
       },
     });
@@ -420,7 +420,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
       onRefresh();
     } catch (err) {
       console.error('[handleResumeFromBlocked]', err);
-      toast.error('Error al reanudar. Inténtalo de nuevo.');
+      toast.error(`Error al reanudar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
     }
   };
 
@@ -434,7 +434,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           await base44.entities.Request.update(req.id, { is_deleted: true });
         } catch (err) {
           console.error('[handleDelete] update error:', err);
-          toast.error('Error al eliminar. Inténtalo de nuevo.');
+          toast.error(`Error al eliminar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
           return;
         }
         try {

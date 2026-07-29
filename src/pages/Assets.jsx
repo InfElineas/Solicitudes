@@ -69,7 +69,7 @@ function AssetForm({ activo, users, onClose, onSaved }) {
       }
       onSaved();
     } catch (err) {
-      toast.error('Error al guardar el activo. Inténtalo de nuevo.');
+      toast.error(`Error al guardar el activo: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
     } finally {
       setSaving(false);
     }

@@ -142,7 +142,7 @@ function ReportForm({ user, activos, kbArticles, incidents, onClose, onSaved }) 
 
       if (rpcError) {
         console.error('[Incidents] create_incident rpc error:', rpcError.message);
-        toast.error('No se pudo registrar la incidencia. Inténtalo de nuevo.');
+        toast.error(`No se pudo registrar la incidencia: ${rpcError?.message || rpcError?.details || 'Inténtalo de nuevo.'}`);
         setSaving(false);
         return;
       }
@@ -559,7 +559,7 @@ function ResolveModal({ incident, techs, onClose, onSaved }) {
       onSaved();
     } catch (err) {
       console.error('[ResolveModal] handleSave error:', err);
-      toast.error('Error al guardar. Inténtalo de nuevo.');
+      toast.error(`Error al guardar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
       setSaving(false);
     }
   };
@@ -793,21 +793,25 @@ export default function Incidents() {
       msg: `¿Mover la incidencia "${inc.tool_name}" a la papelera? Podrás recuperarla desde Papelera.`,
       confirmLabel: 'Mover a papelera',
       onOk: async () => {
-        await base44.entities.Incident.update(inc.id, {
-          is_deleted: true,
-          deleted_by_name: user?.full_name || user?.email || '',
-        });
-        if (inc.reporter_email && inc.reporter_email !== user?.email) {
-          base44.entities.Notification.create({
-            user_id: inc.reporter_email,
-            type: 'incident_info',
-            title: '🗑️ Tu incidencia fue eliminada',
-            message: `La incidencia "${inc.tool_name}" fue movida a la papelera.`,
-            is_read: false,
-          }).catch(() => {});
+        try {
+          await base44.entities.Incident.update(inc.id, {
+            is_deleted: true,
+            deleted_by_name: user?.full_name || user?.email || '',
+          });
+          if (inc.reporter_email && inc.reporter_email !== user?.email) {
+            base44.entities.Notification.create({
+              user_id: inc.reporter_email,
+              type: 'incident_info',
+              title: '🗑️ Tu incidencia fue eliminada',
+              message: `La incidencia "${inc.tool_name}" fue movida a la papelera.`,
+              is_read: false,
+            }).catch(() => {});
+          }
+          toast.success('Incidencia movida a la papelera');
+          refresh();
+        } catch (err) {
+          toast.error(`Error al eliminar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
         }
-        toast.success('Incidencia movida a la papelera');
-        refresh();
       },
     });
   };

@@ -60,7 +60,7 @@ function ArticleForm({ article, initialData, user, onClose, onSaved }) {
       onSaved();
     } catch (err) {
       console.error('[KB] handleSave error:', err);
-      toast.error('Error al guardar el artículo. Inténtalo de nuevo.');
+      toast.error(`Error al guardar el artículo: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
     } finally {
       setSaving(false);
     }

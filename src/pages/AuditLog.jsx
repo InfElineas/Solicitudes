@@ -76,8 +76,8 @@ function RestoreModal({ log, onClose, onRestored }) {
       else { toast.error('Tipo de entidad desconocido, no se puede restaurar'); return; }
       toast.success('Estado restaurado correctamente');
       onRestored();
-    } catch {
-      toast.error('Error al restaurar');
+    } catch (err) {
+      toast.error(`Error al restaurar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
     } finally {
       setRestoring(false);
     }

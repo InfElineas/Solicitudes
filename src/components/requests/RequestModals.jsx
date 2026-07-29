@@ -226,7 +226,7 @@ export function RequestFormModal({ request, departments = [], onClose, onSaved, 
       }
     } catch (err) {
       console.error('[RequestFormModal] handleSubmit error:', err);
-      toast.error('Error al guardar la solicitud. Inténtalo de nuevo.');
+      toast.error(`Error al guardar la solicitud: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
       setSaving(false);
     }
   };
@@ -506,7 +506,7 @@ export function ClassifyModal({ request, onClose, onSaved, user }) {
       onSaved();
     } catch (err) {
       console.error('[ClassifyModal] handleSave error:', err);
-      toast.error('Error al clasificar. Inténtalo de nuevo.');
+      toast.error(`Error al clasificar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
       setSaving(false);
     }
   };
@@ -624,7 +624,7 @@ export function AssignModal({ request, users = [], onClose, onSaved, user }) {
       onSaved();
     } catch (err) {
       console.error('[AssignModal] handleAssign error:', err);
-      toast.error('Error al asignar. Inténtalo de nuevo.');
+      toast.error(`Error al asignar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
       setSaving(false);
     }
   };
@@ -720,7 +720,7 @@ export function RejectModal({ request, onClose, onSaved, user }) {
       onSaved();
     } catch (err) {
       console.error('[RejectModal] handleReject error:', err);
-      toast.error('Error al rechazar. Inténtalo de nuevo.');
+      toast.error(`Error al rechazar: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
       setSaving(false);
     }
   };
@@ -1143,7 +1143,7 @@ export function BlockedModal({ request, targetStatus, user, onClose, onSaved }) 
       onSaved();
     } catch (err) {
       console.error('[BlockedModal] handleSave error:', err);
-      toast.error('Error al cambiar estado. Inténtalo de nuevo.');
+      toast.error(`Error al cambiar estado: ${err?.message || err?.details || 'Inténtalo de nuevo.'}`);
       setSaving(false);
     }
   };
