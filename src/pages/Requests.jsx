@@ -636,7 +636,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         {canManage && (isInWaiting || isRequiresInfo) && (
           <ActionBtn label="Enviar a validación" color="blue" onClick={() => setShowEvidence(true)} />
         )}
-        {(role === 'admin') && isInReview && (
+        {(role === 'admin' || isRequester) && isInReview && (
           <ActionBtn label="✓ Aprobar y Finalizar" color="green" onClick={handleFinalizar} />
         )}
         {canReturnToDevelopment && (
@@ -849,7 +849,7 @@ export default function Requests() {
 
   const role = user?.role || 'employee';
   const canSeeAll = role === 'admin' || role === 'support' || role === 'auditor';
-  const canCreateRequests = role === 'jefe' || role === 'admin';
+  const canCreateRequests = role === 'jefe' || role === 'admin' || role === 'support';
 
   const filtered = useMemo(() => {
     let r = requests;
@@ -1021,7 +1021,7 @@ export default function Requests() {
           className="mb-4 rounded-lg px-3 py-2 text-xs"
           style={{ background: 'hsl(38,80%,14%)', border: '1px solid hsl(38,80%,25%)', color: '#fbbf24' }}
         >
-          Solo jefatura de departamento o administración puede crear solicitudes. Si tienes rol empleado, utiliza el módulo de Incidencias.
+          Solo jefatura de departamento, soporte o administración puede crear solicitudes. Si tienes rol empleado, utiliza el módulo de Incidencias.
         </div>
       )}
 
