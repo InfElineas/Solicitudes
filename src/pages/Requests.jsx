@@ -848,7 +848,7 @@ export default function Requests() {
 
   const role = user?.role || 'employee';
   const canSeeAll = role === 'admin' || role === 'support' || role === 'auditor';
-  const canCreateRequests = role === 'jefe' || role === 'admin' || role === 'support';
+  const canCreateRequests = role === 'jefe' || role === 'admin' || role === 'support' || user?.can_create_requests === true;
 
   const filtered = useMemo(() => {
     let r = requests;

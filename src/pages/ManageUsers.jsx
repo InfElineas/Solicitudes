@@ -92,6 +92,7 @@ export default function ManageUsers() {
         role: editUser.role,
         display_name: editUser.display_name,
         department_id: editUser.department_id || null,
+        can_create_requests: editUser.can_create_requests || false,
       });
       toast.success('Usuario actualizado');
       setEditUser(null);
@@ -244,7 +245,15 @@ export default function ManageUsers() {
                         style={{ background: 'hsl(38,60%,18%)', color: '#fbbf24' }}>Inactivo</span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400">{roleLabel}{deptName ? ` · ${deptName}` : ''}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-xs text-gray-400">{roleLabel}{deptName ? ` · ${deptName}` : ''}</p>
+                    {u.can_create_requests && (u.role === 'employee' || u.role === 'auditor') && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                        style={{ background: 'hsl(217,60%,20%)', color: '#60a5fa', border: '1px solid hsl(217,60%,35%)' }}>
+                        + Solicitudes
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500">{u.email}</p>
                   <div className="flex gap-1 mt-2 flex-wrap">
                     <button onClick={() => navigate(`/UserHistory?email=${encodeURIComponent(u.email)}`)}
@@ -354,6 +363,29 @@ export default function ManageUsers() {
                   {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </div>
+              {(editUser.role === 'employee' || editUser.role === 'auditor') && (
+                <div
+                  className="flex items-center justify-between rounded-lg px-3 py-2.5 cursor-pointer select-none"
+                  style={{ background: 'hsl(222,47%,18%)', border: '1px solid hsl(217,33%,28%)' }}
+                  onClick={() => setE('can_create_requests', !editUser.can_create_requests)}
+                >
+                  <div>
+                    <p className="text-sm text-white font-medium">Puede crear solicitudes</p>
+                    <p className="text-[11px]" style={{ color: 'hsl(215,20%,50%)' }}>
+                      Permite crear solicitudes sin cambiar su rol
+                    </p>
+                  </div>
+                  <div
+                    className="w-10 h-5 rounded-full transition-colors shrink-0 relative"
+                    style={{ background: editUser.can_create_requests ? 'hsl(217,91%,50%)' : 'hsl(217,33%,30%)' }}
+                  >
+                    <div
+                      className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+                      style={{ left: editUser.can_create_requests ? '22px' : '2px' }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setEditUser(null)} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:bg-white/10">Cancelar</button>
