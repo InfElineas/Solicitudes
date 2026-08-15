@@ -54,7 +54,12 @@ export default function Layout({ children, currentPageName }) {
   }, [user?.email]);
 
   const role = user?.role || 'employee';
-  const navItems = NAV.filter(n => n.roles.includes(role));
+  const navItems = NAV.filter(n => {
+    if (n.roles.includes(role)) return true;
+    // Empleados con privilegio can_create_requests ven Solicitudes en lugar de Mi historial
+    if (n.path === '/Requests' && user?.can_create_requests) return true;
+    return false;
+  });
 
   const currentNav = NAV.find(n =>
     n.path === location.pathname ||
