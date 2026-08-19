@@ -489,6 +489,23 @@ export default function Analysis() {
     }).sort((a, b) => b.score - a.score);
   }, [techProductivity, incidentsByTech]);
 
+  // Carga activa real — siempre sobre TODAS las solicitudes, sin filtro de período
+  const activeLoad = useMemo(() => {
+    const TERMINAL = ['Finalizado', 'Rechazado', 'Cancelado'];
+    return techs.map(t => {
+      const open = requests.filter(r => r.assigned_to_id === t.email && !TERMINAL.includes(r.status));
+      return {
+        name: t.display_name || t.full_name || t.email,
+        email: t.email,
+        enProceso:    open.filter(r => r.status === 'En Proceso').length,
+        enValidacion: open.filter(r => r.status === 'En Validación').length,
+        pendientes:   open.filter(r => r.status === 'Pendiente').length,
+        enEspera:     open.filter(r => r.status === 'En Espera').length,
+        activeCount:  open.length,
+      };
+    }).filter(t => t.activeCount > 0).sort((a, b) => b.activeCount - a.activeCount);
+  }, [requests, techs]);
+
   const distData = techProductivity.map(t => ({
     name: t.name.split(' ')[0],
     Difícil: t.difficultCount,
@@ -716,38 +733,32 @@ export default function Analysis() {
       })()}
 
       {/* Carga activa por técnico */}
-      {techProductivity.length > 0 && (() => {
-        const active = techProductivity.map(t => ({
-          ...t,
-          activeCount: t['En Proceso'] + t['En Validación'] + t.Pendientes,
-        })).sort((a, b) => b.activeCount - a.activeCount);
-        const maxActive = Math.max(...active.map(t => t.activeCount), 1);
+      {activeLoad.length > 0 && (() => {
+        const maxActive = Math.max(...activeLoad.map(t => t.activeCount), 1);
         return (
           <div className="rounded-xl p-4" style={{ background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold text-white">Carga activa por técnico</p>
-                <p className="text-xs mt-0.5" style={{ color: muted }}>Solicitudes abiertas en este momento</p>
-              </div>
+            <div className="mb-3">
+              <p className="text-sm font-semibold text-white">Carga activa por técnico</p>
+              <p className="text-xs mt-0.5" style={{ color: muted }}>Solicitudes abiertas ahora — independiente del filtro de período</p>
             </div>
-            <div className="space-y-2.5">
-              {active.map(t => {
-                const pct = maxActive > 0 ? (t.activeCount / maxActive) * 100 : 0;
+            <div className="space-y-3">
+              {activeLoad.map(t => {
+                const pct = (t.activeCount / maxActive) * 100;
                 const color = t.activeCount >= 8 ? '#f87171' : t.activeCount >= 5 ? '#fbbf24' : '#4ade80';
                 return (
-                  <div key={t.email} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium" style={{ color: 'hsl(215,20%,80%)' }}>{t.name}</span>
-                      <div className="flex items-center gap-2" style={{ color: muted }}>
-                        <span>{t['En Proceso']} proceso</span>
-                        <span>·</span>
-                        <span>{t['En Validación']} validación</span>
-                        <span>·</span>
-                        <span style={{ color, fontWeight: 600 }}>{t.activeCount} total</span>
+                  <div key={t.email} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs flex-wrap gap-1">
+                      <span className="font-semibold" style={{ color: 'hsl(215,20%,85%)' }}>{t.name}</span>
+                      <div className="flex items-center gap-2 flex-wrap" style={{ color: muted }}>
+                        {t.enProceso > 0 && <span className="text-blue-400">{t.enProceso} en proceso</span>}
+                        {t.enValidacion > 0 && <span className="text-purple-400">{t.enValidacion} en validación</span>}
+                        {t.pendientes > 0 && <span className="text-yellow-400">{t.pendientes} pendientes</span>}
+                        {t.enEspera > 0 && <span style={{ color: '#fbbf24' }}>{t.enEspera} en espera</span>}
+                        <span className="font-bold" style={{ color }}>{t.activeCount} total</span>
                       </div>
                     </div>
-                    <div className="w-full rounded-full h-1.5" style={{ background: 'hsl(217,33%,20%)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                    <div className="w-full rounded-full h-2" style={{ background: 'hsl(217,33%,20%)' }}>
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
                     </div>
                   </div>
                 );
@@ -1068,8 +1079,8 @@ export default function Analysis() {
                 <table className="w-full text-xs min-w-[800px]">
                   <thead>
                     <tr style={{ borderBottom: '1px solid hsl(217,33%,22%)' }}>
-                      {['Técnico', 'Asignadas', 'Finalizadas', 'En Proceso', 'Rechazadas', 'Tasa éxito', 'Prom. horas', 'A tiempo', 'Score complejidad', 'Difícil', 'Medio', 'Fácil'].map(h => (
-                        <th key={h} className="text-left py-2 px-2 font-medium" style={{ color: 'hsl(215,20%,45%)' }}>{h}</th>
+                      {['Técnico', 'Asignadas', 'Finalizadas', 'En Proceso', 'Pendientes', 'En Validación', 'Rechazadas', 'Tasa éxito', 'Prom. horas', 'A tiempo', 'Score complejidad', 'Difícil', 'Medio', 'Fácil'].map(h => (
+                        <th key={h} className="text-left py-2 px-2 font-medium whitespace-nowrap" style={{ color: 'hsl(215,20%,45%)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -1082,6 +1093,8 @@ export default function Analysis() {
                           <td className="py-2 px-2 text-white">{t.Asignadas}</td>
                           <td className="py-2 px-2 text-green-400 font-semibold">{t.Finalizadas}</td>
                           <td className="py-2 px-2 text-blue-300">{t['En Proceso']}</td>
+                          <td className="py-2 px-2 text-yellow-400">{t.Pendientes}</td>
+                          <td className="py-2 px-2 text-purple-400">{t['En Validación']}</td>
                           <td className="py-2 px-2 text-red-400">{t.Rechazadas}</td>
                           <td className="py-2 px-2"><span className={`font-semibold ${rate >= 70 ? 'text-green-400' : rate >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{rate}%</span></td>
                           <td className="py-2 px-2 text-orange-300">{t.avgHrs !== '—' ? `${t.avgHrs}h` : '—'}</td>
@@ -1201,7 +1214,7 @@ export default function Analysis() {
                   <Legend wrapperStyle={{ fontSize: 10, color: muted }} />
                   <Bar dataKey="total" name="Total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Finalizadas" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="En progreso" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="En Proceso" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Pendientes" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
