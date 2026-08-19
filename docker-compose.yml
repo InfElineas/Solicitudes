@@ -1,0 +1,10 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    environment:
+      # Las variables de entorno se inyectan en build-time via Vite (VITE_*)
+      # Aquí puedes sobreescribir si usas un entrypoint que las inyecta en runtime
+      - NODE_ENV=production

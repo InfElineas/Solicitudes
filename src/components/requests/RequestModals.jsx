@@ -1127,6 +1127,13 @@ export function BlockedModal({ request, targetStatus, user, onClose, onSaved }) 
         p_by_user_name: user?.display_name || user?.full_name || user?.email || '',
       });
       if (blockedError) throw blockedError;
+      // Pausar SLA si el estado es uno que bloquea al técnico
+      const SLA_PAUSE = new Set(['En Espera', 'Requiere Información']);
+      if (SLA_PAUSE.has(targetStatus)) {
+        await base44.entities.Request.update(request.id, {
+          sla_pause_started_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
       if (request.requester_id && request.requester_id !== user?.email) {
         const notifTitle = {
           'En Espera': '⏸ Tu solicitud está en espera',

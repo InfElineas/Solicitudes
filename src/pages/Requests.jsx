@@ -374,6 +374,14 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         p_by_user_name: user?.display_name || user?.full_name || user?.email || '',
       });
       if (returnError) throw returnError;
+      // Reanudar SLA: acumular pausa y limpiar
+      if (req.sla_pause_started_at) {
+        const addedMs = Date.now() - new Date(req.sla_pause_started_at).getTime();
+        await base44.entities.Request.update(req.id, {
+          sla_paused_ms: (req.sla_paused_ms || 0) + Math.max(0, addedMs),
+          sla_pause_started_at: null,
+        }).catch(() => {});
+      }
       if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
         await base44.entities.Notification.create({
           user_id: req.assigned_to_id,
@@ -405,6 +413,14 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         p_by_user_name: user?.display_name || user?.full_name || user?.email || '',
       });
       if (resumeError) throw resumeError;
+      // Reanudar SLA: acumular pausa y limpiar
+      if (req.sla_pause_started_at) {
+        const addedMs = Date.now() - new Date(req.sla_pause_started_at).getTime();
+        await base44.entities.Request.update(req.id, {
+          sla_paused_ms: (req.sla_paused_ms || 0) + Math.max(0, addedMs),
+          sla_pause_started_at: null,
+        }).catch(() => {});
+      }
       if (req.assigned_to_id && req.assigned_to_id !== user?.email) {
         await base44.entities.Notification.create({
           user_id: req.assigned_to_id,

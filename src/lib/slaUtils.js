@@ -8,55 +8,71 @@ const SLA_HOURS = {
   'P1 — Crítica': 9,
   'P2 — Alta':    9,
   'P3 — Media':   48,
-  'P4 — Baja':    null, // sin límite definido
+  'P4 — Baja':    null,
 };
 
 const TERMINAL = ['Finalizado', 'Cancelado', 'Rechazado'];
 
+// Estados donde el SLA se pausa (el técnico no puede avanzar)
+export const SLA_PAUSE_STATES = new Set(['En Validación', 'En Espera', 'Requiere Información']);
+
+/** Calcula los ms totales pausados para una solicitud. */
+function getPausedMs(request, now) {
+  let paused = request.sla_paused_ms || 0;
+  if (SLA_PAUSE_STATES.has(request.status) && request.sla_pause_started_at) {
+    paused += now - new Date(request.sla_pause_started_at).getTime();
+  }
+  return Math.max(0, paused);
+}
+
 /**
  * Devuelve información de SLA para una solicitud.
- * @returns {{ pct: number|null, semaphore: 'green'|'yellow'|'red'|'breached'|'closed'|'unknown', label: string }}
+ * Descuenta automáticamente el tiempo en estados que no dependen del técnico
+ * (En Validación, En Espera, Requiere Información).
+ * @returns {{ pct: number|null, semaphore: 'green'|'yellow'|'red'|'breached'|'closed'|'unknown', label: string, paused: boolean }}
  */
 export function getSLAInfo(request) {
-  if (!request) return { pct: null, semaphore: 'unknown', label: '' };
+  if (!request) return { pct: null, semaphore: 'unknown', label: '', paused: false };
 
   if (TERMINAL.includes(request.status)) {
-    return { pct: null, semaphore: 'closed', label: '' };
+    return { pct: null, semaphore: 'closed', label: '', paused: false };
   }
 
   const now = Date.now();
   const created = request.created_date ? new Date(request.created_date).getTime() : null;
+  const paused = SLA_PAUSE_STATES.has(request.status);
+  const pausedMs = getPausedMs(request, now);
 
-  // Si hay fecha compromiso explícita, usarla como referencia principal
+  // Si hay fecha compromiso explícita — extender deadline por el tiempo pausado
   if (request.estimated_due) {
     const due = new Date(request.estimated_due).getTime();
-    const total = due - (created || due - 1);
-    const elapsed = now - (created || now);
-    const remaining = due - now;
+    const effectiveDue = due + pausedMs;
+    const total = effectiveDue - (created || effectiveDue - 1);
+    const elapsed = Math.max(0, now - (created || now) - pausedMs);
+    const remaining = effectiveDue - now;
 
     if (remaining <= 0) {
-      const overMs = now - due;
-      return { pct: 100, semaphore: 'breached', label: formatOverdue(overMs) };
+      return { pct: 100, semaphore: 'breached', label: formatOverdue(now - effectiveDue), paused };
     }
 
     const pct = total > 0 ? Math.min(Math.round((elapsed / total) * 100), 99) : 0;
-    return { pct, semaphore: pctToSemaphore(pct), label: formatRemaining(remaining) };
+    return { pct, semaphore: paused ? 'paused' : pctToSemaphore(pct), label: paused ? 'SLA pausado' : formatRemaining(remaining), paused };
   }
 
-  // Sin fecha compromiso: usar horas del sla_config por prioridad
+  // Sin fecha compromiso: usar horas por prioridad
   const slaHours = SLA_HOURS[request.priority];
-  if (!slaHours || !created) return { pct: null, semaphore: 'unknown', label: 'Sin fecha límite' };
+  if (!slaHours || !created) return { pct: null, semaphore: 'unknown', label: 'Sin fecha límite', paused };
 
   const slaMs = slaHours * 3600 * 1000;
-  const elapsed = now - created;
+  const elapsed = Math.max(0, now - created - pausedMs);
   const remaining = slaMs - elapsed;
 
   if (remaining <= 0) {
-    return { pct: 100, semaphore: 'breached', label: formatOverdue(-remaining) };
+    return { pct: 100, semaphore: 'breached', label: formatOverdue(-remaining), paused };
   }
 
   const pct = Math.min(Math.round((elapsed / slaMs) * 100), 99);
-  return { pct, semaphore: pctToSemaphore(pct), label: formatRemaining(remaining) };
+  return { pct, semaphore: paused ? 'paused' : pctToSemaphore(pct), label: paused ? 'SLA pausado' : formatRemaining(remaining), paused };
 }
 
 function pctToSemaphore(pct) {
@@ -102,6 +118,7 @@ export const SEMAPHORE_COLOR = {
   breached:'#f87171',
   closed:  '#6b7280',
   unknown: '#4b5563',
+  paused:  '#818cf8',
 };
 
 export const SEMAPHORE_BG = {
@@ -111,4 +128,5 @@ export const SEMAPHORE_BG = {
   breached:'hsl(0,60%,18%)',
   closed:  'hsl(220,15%,15%)',
   unknown: 'hsl(220,15%,15%)',
+  paused:  'hsl(245,60%,18%)',
 };

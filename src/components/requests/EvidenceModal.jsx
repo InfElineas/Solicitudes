@@ -69,13 +69,18 @@ export default function EvidenceModal({ request, user, onClose, onSaved }) {
       });
       if (evidenceError) throw evidenceError;
 
-      // Notify requester
-      if (request.requester_id && request.requester_id !== user?.email) {
+      // Pausar SLA: registrar inicio de pausa
+      await base44.entities.Request.update(request.id, {
+        sla_pause_started_at: new Date().toISOString(),
+      }).catch(() => {});
+
+      // Notificar al solicitante que debe revisar y aprobar
+      if (request.requester_id) {
         await base44.entities.Notification.create({
           user_id: request.requester_id,
           type: 'status_change',
-          title: '🔍 Tu solicitud está en revisión',
-          message: `La solicitud "${request.title}" fue enviada a revisión y está siendo evaluada.`,
+          title: '👀 Tu solicitud requiere tu aprobación',
+          message: `La solicitud "${request.title}" fue completada y está esperando tu revisión. Revísala y apruébala para cerrarla, o devuélvela si necesita ajustes.`,
           request_id: request.id,
           request_title: request.title,
           is_read: false,
