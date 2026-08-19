@@ -497,11 +497,12 @@ export default function Analysis() {
       return {
         name: t.display_name || t.full_name || t.email,
         email: t.email,
-        enProceso:    open.filter(r => r.status === 'En Proceso').length,
-        enValidacion: open.filter(r => r.status === 'En Validación').length,
-        pendientes:   open.filter(r => r.status === 'Pendiente').length,
-        enEspera:     open.filter(r => r.status === 'En Espera').length,
-        activeCount:  open.length,
+        enProceso:      open.filter(r => r.status === 'En Proceso').length,
+        enValidacion:   open.filter(r => r.status === 'En Validación').length,
+        pendientes:     open.filter(r => r.status === 'Pendiente').length,
+        enEspera:       open.filter(r => r.status === 'En Espera').length,
+        reqInfo:        open.filter(r => r.status === 'Requiere Información').length,
+        activeCount:    open.length,
       };
     }).filter(t => t.activeCount > 0).sort((a, b) => b.activeCount - a.activeCount);
   }, [requests, techs]);
@@ -753,7 +754,8 @@ export default function Analysis() {
                         {t.enProceso > 0 && <span className="text-blue-400">{t.enProceso} en proceso</span>}
                         {t.enValidacion > 0 && <span className="text-purple-400">{t.enValidacion} en validación</span>}
                         {t.pendientes > 0 && <span className="text-yellow-400">{t.pendientes} pendientes</span>}
-                        {t.enEspera > 0 && <span style={{ color: '#fbbf24' }}>{t.enEspera} en espera</span>}
+                        {t.enEspera > 0 && <span className="text-orange-300">{t.enEspera} en espera</span>}
+                        {t.reqInfo > 0 && <span style={{ color: '#fb923c' }}>{t.reqInfo} req. info</span>}
                         <span className="font-bold" style={{ color }}>{t.activeCount} total</span>
                       </div>
                     </div>
@@ -946,6 +948,25 @@ export default function Analysis() {
 
       {activeTab === 'solicitudes' && (
         <div className="space-y-5">
+          {/* Aviso si el período excluye solicitudes activas */}
+          {(() => {
+            const TERMINAL = ['Finalizado', 'Rechazado', 'Cancelado'];
+            const activeOutsidePeriod = requests.filter(r =>
+              !TERMINAL.includes(r.status) && !periodFiltered.includes(r)
+            ).length;
+            if (activeOutsidePeriod === 0) return null;
+            return (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                style={{ background: 'hsl(38,50%,14%)', border: '1px solid hsl(38,60%,28%)', color: '#fbbf24' }}>
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  Hay <strong>{activeOutsidePeriod}</strong> solicitudes activas (sin finalizar) fuera del período seleccionado.
+                  Los KPIs de abajo solo reflejan el período — la carga activa de arriba las incluye todas.
+                </span>
+              </div>
+            );
+          })()}
+
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatCard title="Total solicitudes" value={stats.total} subtitle="En el periodo" icon={FileText} iconColor="text-gray-400"
