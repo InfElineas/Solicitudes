@@ -445,7 +445,7 @@ function IncidentDetailModal({ incident, user, onClose }) {
   );
 }
 
-function ResolveModal({ incident, techs, onClose, onSaved }) {
+function ResolveModal({ incident, techs, user, onClose, onSaved }) {
   const [form, setFormState] = useState({
     status: incident?.status || 'Pendiente',
     assigned_to: incident?.assigned_to || '',
@@ -1077,7 +1077,7 @@ export default function Incidents() {
         <ReportForm user={user} activos={activos} kbArticles={kbArticles} incidents={incidents} onClose={() => setShowForm(false)} onSaved={refresh} />
       )}
       {managing && (
-        <ResolveModal incident={managing} techs={techs} onClose={() => setManaging(null)} onSaved={() => { setManaging(null); refresh(); }} />
+        <ResolveModal incident={managing} techs={techs} user={user} onClose={() => setManaging(null)} onSaved={() => { setManaging(null); refresh(); }} />
       )}
       {chatIncident && user && (
         <IncidentDetailModal incident={chatIncident} user={user} onClose={() => setChatIncident(null)} />
