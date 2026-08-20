@@ -117,7 +117,7 @@ function KanbanCard({ req, index, user, users, onRefresh }) {
             <div className="mt-1.5 space-y-0.5">
               <div className="flex justify-between items-center">
                 <span className="text-[9px] font-semibold" style={{ color: SEMAPHORE_COLOR[sla.semaphore] }}>
-                  {sla.semaphore === 'breached' ? '⚠ Vencida' : `${sla.pct}%`}
+                  {sla.semaphore === 'breached' ? '⚠ Vencida' : sla.semaphore === 'paused' ? '⏸ Pausado' : `${sla.pct}%`}
                 </span>
                 <span className="text-[9px]" style={{ color: 'hsl(215,20%,40%)' }}>{sla.label}</span>
               </div>

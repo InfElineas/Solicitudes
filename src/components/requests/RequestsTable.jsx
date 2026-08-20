@@ -76,6 +76,9 @@ export default function RequestsTable({ requests, user, users, onRefresh }) {
                         {sla.semaphore === 'breached' && (
                           <span className="shrink-0 w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#f87171' }} title="SLA vencido" />
                         )}
+                        {sla.semaphore === 'paused' && (
+                          <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ background: '#818cf8' }} title="SLA pausado" />
+                        )}
                         <span className="truncate block" title={req.title}>{req.title}</span>
                       </div>
                     </td>
@@ -97,7 +100,7 @@ export default function RequestsTable({ requests, user, users, onRefresh }) {
                         <div className="space-y-0.5" title={sla.label}>
                           <div className="flex items-center justify-between gap-1">
                             <span className="text-[10px] font-semibold" style={{ color: SEMAPHORE_COLOR[sla.semaphore] }}>
-                              {sla.semaphore === 'breached' ? '⚠ Vencida' : `${sla.pct}%`}
+                              {sla.semaphore === 'breached' ? '⚠ Vencida' : sla.semaphore === 'paused' ? '⏸ Pausado' : `${sla.pct}%`}
                             </span>
                             <span className="text-[10px] truncate max-w-[70px]" style={{ color: 'hsl(215,20%,45%)' }}>
                               {sla.label}
