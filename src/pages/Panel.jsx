@@ -49,7 +49,7 @@ function MyRequests({ requests }) {
     .filter(r => r.status !== 'Finalizado' && r.status !== 'Rechazado' && r.status !== 'Cancelado')
     .sort((a, b) => {
       const sa = getSLAInfo(a); const sb = getSLAInfo(b);
-      const ord = { breached: 0, red: 1, yellow: 2, green: 3, unknown: 4, closed: 5 };
+      const ord = { breached: 0, red: 1, yellow: 2, green: 3, paused: 4, unknown: 5, closed: 6 };
       return (ord[sa.semaphore] ?? 3) - (ord[sb.semaphore] ?? 3);
     });
 
@@ -76,7 +76,7 @@ function MyRequests({ requests }) {
             {sla.semaphore !== 'closed' && sla.semaphore !== 'unknown' && (
               <div className="shrink-0 text-right">
                 <div className="text-[10px] font-semibold mb-0.5" style={{ color: SEMAPHORE_COLOR[sla.semaphore] }}>
-                  {sla.semaphore === 'breached' ? <span className="flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" /> Vencida</span> : `SLA ${sla.pct}%`}
+                  {sla.semaphore === 'breached' ? <span className="flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" /> Vencida</span> : sla.semaphore === 'paused' ? '⏸ Pausado' : `SLA ${sla.pct}%`}
                 </div>
                 <div className="w-16 rounded-full h-1" style={{ background: 'hsl(217,33%,22%)' }}>
                   <div className="h-full rounded-full" style={{ width: `${sla.pct ?? 100}%`, background: SEMAPHORE_COLOR[sla.semaphore] }} />
@@ -253,7 +253,8 @@ export default function Panel() {
   const activeReqs = myRequests.filter(r => r.status !== 'Finalizado' && r.status !== 'Rechazado' && r.status !== 'Cancelado');
   const activeIncs = myIncidents.filter(i => i.status !== 'Resuelto' && i.status !== 'Cerrado');
   const slaBreached = activeReqs.filter(r => getSLAInfo(r).semaphore === 'breached').length;
-  const slaWarning = activeReqs.filter(r => getSLAInfo(r).semaphore === 'yellow').length;
+  const slaWarning  = activeReqs.filter(r => getSLAInfo(r).semaphore === 'yellow').length;
+  const slaPaused   = activeReqs.filter(r => getSLAInfo(r).semaphore === 'paused').length;
 
   const weekStart = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
@@ -282,7 +283,7 @@ export default function Panel() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiTile label="Solicitudes activas" value={activeReqs.length} sub="asignadas a mí" color="#60a5fa" />
         <KpiTile label="Vencidas SLA" value={slaBreached} sub={slaWarning > 0 ? `+${slaWarning} por vencer` : 'ninguna más'} color={slaBreached > 0 ? '#f87171' : '#4ade80'} />
-        <KpiTile label="Incidencias activas" value={activeIncs.length} sub="asignadas a mí" color="#fbbf24" />
+        <KpiTile label="SLA pausado" value={slaPaused} sub="esperando al solicitante" color={slaPaused > 0 ? '#818cf8' : 'hsl(215,20%,50%)'} />
         <KpiTile label="Tiempo esta semana" value={fmtMins(weekMins)} sub={`${myWorklogs.filter(w => w.created_date && new Date(w.created_date) >= weekStart).length} registros`} color="#c084fc" />
       </div>
 

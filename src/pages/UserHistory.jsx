@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, AlertTriangle, ChevronLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/lib/AuthContext';
 
 const cardStyle = { background: 'hsl(222,47%,11%)', border: '1px solid hsl(217,33%,18%)' };
 const muted = 'hsl(215,20%,55%)';
@@ -17,14 +18,13 @@ const STATUS_COLORS = {
 };
 
 export default function UserHistory() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState('requests');
+  const [statusFilter, setStatusFilter] = useState('');
 
   // Get target user from URL params
   const params = new URLSearchParams(window.location.search);
   const targetEmail = params.get('email');
-
-  useEffect(() => { base44.auth.me().then(setCurrentUser).catch(() => {}); }, []);
 
   const isAdminViewing = (currentUser?.role === 'admin' || currentUser?.role === 'superadmin') && targetEmail;
   const viewEmail = targetEmail || currentUser?.email;
@@ -99,6 +99,26 @@ export default function UserHistory() {
         ) : requests.length === 0 ? (
           <div className="text-center py-10 rounded-xl" style={{ ...cardStyle, color: muted }}>Sin solicitudes registradas</div>
         ) : (
+          <>
+            {/* Filtros rápidos */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: 'Todas', value: '' },
+                { label: '🔍 Pendientes de mi aprobación', value: 'En Validación' },
+                { label: 'En proceso', value: 'En Proceso' },
+                { label: 'Finalizadas', value: 'Finalizado' },
+              ].map(f => (
+                <button key={f.value} onClick={() => setStatusFilter(f.value)}
+                  className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
+                  style={{
+                    background: statusFilter === f.value ? 'hsl(217,91%,30%)' : 'hsl(222,47%,16%)',
+                    color: statusFilter === f.value ? '#93c5fd' : muted,
+                    border: `1px solid ${statusFilter === f.value ? 'hsl(217,91%,45%)' : 'hsl(217,33%,22%)'}`,
+                  }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
           <div className="rounded-xl overflow-hidden" style={{ border: '1px solid hsl(217,33%,18%)' }}>
             <table className="w-full text-xs">
               <thead>
@@ -109,7 +129,7 @@ export default function UserHistory() {
                 </tr>
               </thead>
               <tbody>
-                {requests.map((req, i) => (
+                {requests.filter(r => !statusFilter || r.status === statusFilter).map((req, i) => (
                   <tr key={req.id} style={{ background: i % 2 === 0 ? 'hsl(222,47%,12%)' : 'hsl(222,47%,11%)', borderBottom: '1px solid hsl(217,33%,16%)' }}>
                     <td className="px-3 py-2.5 font-medium text-white max-w-[220px]">
                       <span className="truncate block" title={req.title}>{req.title}</span>
@@ -126,6 +146,7 @@ export default function UserHistory() {
               </tbody>
             </table>
           </div>
+          </>
         )
       )}
 

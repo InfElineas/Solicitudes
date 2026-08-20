@@ -166,5 +166,38 @@ export async function sendRequiereInfoEmail(request) {
   await send(request.requester_id, `⚠️ Tu solicitud requiere información: ${request.title}`, body);
 }
 
+/** El solicitante aprobó → técnico */
+export async function sendAprobadoPorSolicitanteEmail(request) {
+  if (!request.assigned_to_id) return;
+  const body = `
+<h2 style="font-size:18px;font-weight:700;color:#4ade80;margin:0 0 8px;">✅ El solicitante aprobó tu trabajo</h2>
+<p style="color:#94a3b8;margin:0 0 20px;font-size:14px;">El solicitante revisó y aprobó la solicitud. Quedó marcada como <strong style="color:#4ade80;">Finalizada</strong>.</p>
+<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:20px;">
+  <p style="margin:0 0 6px;font-size:16px;font-weight:600;color:#f1f5f9;">${h(request.title)}</p>
+  <p style="margin:0;font-size:12px;color:#64748b;">Solicitante: ${h(request.requester_name || request.requester_id || '—')}</p>
+</div>
+<a href="${requestUrl()}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;">Ver solicitud →</a>`;
+  await send(request.assigned_to_id, `✅ Aprobado por solicitante: ${request.title}`, body);
+}
+
+/** El solicitante devolvió a desarrollo → técnico */
+export async function sendDevueltaADesarrolloEmail(request, reason) {
+  if (!request.assigned_to_id) return;
+  const body = `
+<h2 style="font-size:18px;font-weight:700;color:#f59e0b;margin:0 0 8px;">↩️ Solicitud devuelta a desarrollo</h2>
+<p style="color:#94a3b8;margin:0 0 20px;font-size:14px;">El solicitante revisó la solicitud y la devolvió para ajustes.</p>
+<div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:20px;">
+  <p style="margin:0 0 6px;font-size:16px;font-weight:600;color:#f1f5f9;">${h(request.title)}</p>
+  <p style="margin:0;font-size:12px;color:#64748b;">Solicitante: ${h(request.requester_name || request.requester_id || '—')}</p>
+</div>
+${reason ? `
+<div style="background:#1e293b;border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:20px;">
+  <p style="margin:0 0 4px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Motivo</p>
+  <p style="margin:0;font-size:14px;color:#e2e8f0;">${h(reason)}</p>
+</div>` : ''}
+<a href="${requestUrl()}" style="display:inline-block;background:#2563eb;color:white;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;">Ver solicitud →</a>`;
+  await send(request.assigned_to_id, `↩️ Devuelta a desarrollo: ${request.title}`, body);
+}
+
 // Alias de compatibilidad (usado en RequestModals existentes)
 export const sendAssignedCriticalEmail = sendAssignedEmail;

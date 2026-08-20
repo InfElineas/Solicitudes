@@ -21,7 +21,7 @@ import {
   BlockedModal,
 } from '../components/requests/RequestModals';
 import KanbanBoard from '../components/requests/KanbanBoard';
-import { sendFinalizadaEmail, sendEnProcesoEmail } from '@/services/emailNotifications';
+import { sendFinalizadaEmail, sendEnProcesoEmail, sendAprobadoPorSolicitanteEmail, sendDevueltaADesarrolloEmail } from '@/services/emailNotifications';
 
 
 function ReturnToDevelopmentModal({ request, onClose, onConfirm }) {
@@ -251,6 +251,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
             });
           }
           sendFinalizadaEmail({ ...req, status: 'Finalizado', completion_date: completionDate, actual_hours: actualHours }).catch(e => console.warn('[Requests] email error (non-critical):', e));
+          sendAprobadoPorSolicitanteEmail(req).catch(() => {});
           toast.success('Solicitud finalizada', {
             duration: 8000,
             action: {
@@ -297,6 +298,7 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
           is_read: false,
         });
       }
+      sendDevueltaADesarrolloEmail(req, reason).catch(() => {});
       toast.success('Solicitud devuelta a desarrollo');
       onRefresh();
     } catch (err) {
