@@ -207,9 +207,11 @@ function SectionCard({ title, icon: Icon, count, children, onViewAll, color = '#
 }
 
 // ── KPI stat tile ────────────────────────────────────────────────────────────
-function KpiTile({ label, value, sub, color = 'white' }) {
+function KpiTile({ label, value, sub, color = 'white', onClick }) {
   return (
-    <div className="rounded-lg px-4 py-3 flex flex-col gap-0.5" style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,20%)' }}>
+    <div className={`rounded-lg px-4 py-3 flex flex-col gap-0.5${onClick ? ' cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+      style={{ background: 'hsl(222,47%,14%)', border: '1px solid hsl(217,33%,20%)' }}
+      onClick={onClick}>
       <span className="text-[10px] uppercase tracking-wide" style={{ color: 'hsl(215,20%,50%)' }}>{label}</span>
       <span className="text-2xl font-bold" style={{ color }}>{value}</span>
       {sub && <span className="text-[10px]" style={{ color: 'hsl(215,20%,45%)' }}>{sub}</span>}
@@ -281,9 +283,9 @@ export default function Panel() {
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiTile label="Solicitudes activas" value={activeReqs.length} sub="asignadas a mí" color="#60a5fa" />
-        <KpiTile label="Vencidas SLA" value={slaBreached} sub={slaWarning > 0 ? `+${slaWarning} por vencer` : 'ninguna más'} color={slaBreached > 0 ? '#f87171' : '#4ade80'} />
-        <KpiTile label="SLA pausado" value={slaPaused} sub="esperando al solicitante" color={slaPaused > 0 ? '#818cf8' : 'hsl(215,20%,50%)'} />
+        <KpiTile label="Solicitudes activas" value={activeReqs.length} sub="asignadas a mí" color="#60a5fa" onClick={() => navigate('/Requests')} />
+        <KpiTile label="Vencidas SLA" value={slaBreached} sub={slaWarning > 0 ? `+${slaWarning} por vencer` : 'ninguna más'} color={slaBreached > 0 ? '#f87171' : '#4ade80'} onClick={() => navigate('/Requests')} />
+        <KpiTile label="Incidencias activas" value={activeIncs.length} sub="asignadas a mí" color="#fbbf24" onClick={() => navigate('/Incidents')} />
         <KpiTile label="Tiempo esta semana" value={fmtMins(weekMins)} sub={`${myWorklogs.filter(w => w.created_date && new Date(w.created_date) >= weekStart).length} registros`} color="#c084fc" />
       </div>
 
