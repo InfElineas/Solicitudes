@@ -1,4 +1,5 @@
 import { base44 } from '@/api/base44Client';
+import { getSLAInfo } from '@/lib/slaUtils';
 
 /**
  * Automation Rule Engine
@@ -15,6 +16,7 @@ const TRIGGER_LABELS = {
   high_priority_unassigned: 'Alta prioridad sin asignar',
   status_change: 'Cambio de estado',
   sla_warning_80: 'SLA al 80% consumido',
+  sla_warning_red: 'SLA en rojo (≥90% consumido)',
   stale_validation_3d: 'En Validación 3+ días sin respuesta',
 };
 
@@ -58,8 +60,12 @@ function matchesTrigger(req, trigger) {
       if (totalMs <= 0) return false;
       const elapsedMs = now - new Date(req.created_date).getTime();
       const pct = elapsedMs / totalMs;
-      // Fires when 80%+ elapsed but not yet due
       return pct >= 0.8 && new Date(req.estimated_due).getTime() > now;
+    }
+    case 'sla_warning_red': {
+      const sla = getSLAInfo(req);
+      // Fires when SLA semaphore is 'red' (>=90% consumed) and not yet breached or paused
+      return sla.semaphore === 'red';
     }
     case 'stale_validation_3d':
       return req.status === 'En Validación' && (now - updatedAt) >= 3 * 24 * 3600 * 1000;
