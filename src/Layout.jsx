@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
+import { useQuery } from '@tanstack/react-query';
 import {
   FileText, BarChart2, Trash2, Users, Building2,
   ChevronLeft, LogOut, Zap, AlertTriangle, Shield, Package, BookOpen, ShieldCheck, LayoutDashboard,
@@ -54,6 +55,17 @@ export default function Layout({ children, currentPageName }) {
   }, [user?.email]);
 
   const role = user?.role || 'employee';
+
+  // Badge "En Validación" para Mi Historial (empleados)
+  const { data: pendingApproval = [] } = useQuery({
+    queryKey: ['pending-approval-badge', user?.email],
+    queryFn: () => base44.entities.Request.filter({ requester_id: user?.email, status: 'En Validación', is_deleted: false }),
+    enabled: !!user?.email && (role === 'employee' || role === 'auditor'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const pendingCount = pendingApproval.length;
+
   const navItems = NAV.filter(n => {
     if (n.roles.includes(role)) return true;
     // Empleados con privilegio can_create_requests ven Solicitudes en lugar de Mi historial
@@ -144,7 +156,13 @@ export default function Layout({ children, currentPageName }) {
                 }
               >
                 <item.icon className="w-4 h-4 shrink-0" />
-                {!collapsed && <span className="truncate">{item.name}</span>}
+                {!collapsed && <span className="truncate flex-1">{item.name}</span>}
+                {!collapsed && item.path === '/UserHistory' && pendingCount > 0 && (
+                  <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: 'hsl(245,60%,35%)', color: '#c7d2fe' }}>
+                    {pendingCount}
+                  </span>
+                )}
               </Link>
             );
           })}
