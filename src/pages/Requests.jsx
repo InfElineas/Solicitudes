@@ -339,8 +339,8 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
             await base44.entities.Notification.create({
               user_id: req.assigned_to_id,
               type: 'resolved',
-              title: '✅ Solicitud aprobada y finalizada',
-              message: `La solicitud "${req.title}" fue aprobada por administración.`,
+              title: '✅ El solicitante aprobó tu trabajo',
+              message: `La solicitud "${req.title}" fue revisada y aprobada por el solicitante. Quedó Finalizada.`,
               request_id: req.id,
               request_title: req.title,
               is_read: false,
@@ -386,8 +386,8 @@ const RequestCard = memo(function RequestCard({ req, user, users, departments = 
         await base44.entities.Notification.create({
           user_id: req.assigned_to_id,
           type: 'status_change',
-          title: '↩️ Solicitud devuelta a desarrollo',
-          message: `La solicitud "${req.title}" fue devuelta a En Proceso. Motivo: ${reason}`,
+          title: '↩️ El solicitante devolvió la solicitud',
+          message: `La solicitud "${req.title}" fue devuelta a En Proceso por el solicitante. Motivo: ${reason}`,
           request_id: req.id,
           request_title: req.title,
           is_read: false,
