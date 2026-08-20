@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Shield, Plus, Clock, X, AlertTriangle, RefreshCw, Ban, Edit3, Calendar, User, Trash2, ArrowUpDown, BarChart2 } from 'lucide-react';
@@ -528,7 +529,7 @@ function SelfAssignModal({ user, guardias, onClose, onSaved }) {
 
 // ── Main component ────────────────────────────────────────────
 export default function Guards() {
-  const [user, setUser]               = useState(null);
+  const { user }                      = useAuth();
   const [showForm, setShowForm]       = useState(false);
   const [showPlanner, setShowPlanner] = useState(false);
   const [editGuardia, setEditGuardia] = useState(null);
@@ -540,7 +541,6 @@ export default function Guards() {
   const [dlg, setDlg] = useState({ open: false, msg: '', confirmLabel: 'Confirmar', onOk: null });
   const qc = useQueryClient();
 
-  useEffect(() => { base44.auth.me().then(setUser).catch(() => {}); }, []);
 
   const role       = user?.role || 'employee';
   const canManage  = role === 'admin';
